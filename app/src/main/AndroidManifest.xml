@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PERMISSIES
+         ═══════════════════════════════════════════════════════════════ -->
+
+    <!-- Internet: vereist voor YouTube-data ophalen en audio streamen -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Foreground Service: vereist vanaf Android 9 voor achtergrondafspelen -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Foreground Service type mediaPlayback: verplicht vanaf Android 14 (API 34) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- Notificaties: runtime-permissie vereist vanaf Android 13 (API 33) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".YTAutoApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.YTAuto"
+        android:usesCleartextTraffic="true">
+
+        <!-- ═══════════════════════════════════════════════════════════
+             MAIN ACTIVITY (Mobiele Compose UI)
+             ═══════════════════════════════════════════════════════════ -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             MEDIA3 LIBRARY SERVICE (Kern van de app)
+
+             Dit is de MediaLibraryService die:
+             - ExoPlayer beheert voor audioafspelen
+             - De MediaSession host voor systeemintegratie
+             - De browse-boom levert aan Android Auto
+             - De foreground notification beheert
+
+             De twee intent-filters zijn BEIDE nodig:
+             1. Media3 intent: voor moderne Media3-clients
+             2. Legacy MediaBrowserService: voor Android Auto compatibiliteit
+             ═══════════════════════════════════════════════════════════ -->
+        <service
+            android:name=".service.PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             ANDROID AUTO CONFIGURATIE
+
+             Dit metadata-element vertelt Android Auto dat deze app een
+             veilige media-app is die op het autoscherm mag draaien.
+             Verwijst naar res/xml/automotive_app_desc.xml
+             ═══════════════════════════════════════════════════════════ -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+    </application>
+
+</manifest>

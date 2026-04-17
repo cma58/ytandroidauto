@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">YT Auto</string>
+    <string name="search_hint">Zoek op YouTube…</string>
+    <string name="no_results">Geen resultaten gevonden</string>
+    <string name="loading">Laden…</string>
+    <string name="error_generic">Er ging iets mis. Probeer opnieuw.</string>
+    <string name="now_playing">Nu aan het afspelen</string>
+    <string name="notification_channel_name">Audio afspelen</string>
+    <string name="notification_channel_desc">Toont de huidige afspeelstatus</string>
+</resources>
