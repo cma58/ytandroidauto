@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="androidx.car.app.automotive" />
 
     <!-- ═══════════════════════════════════════════════════════════════
          PERMISSIES
@@ -13,6 +16,10 @@
 
     <!-- Foreground Service type mediaPlayback: verplicht vanaf Android 14 (API 34) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- Car App: vereist voor de video-hack -->
+    <uses-permission android:name="com.google.android.gms.permission.CAR_DISPLAY_CATEGORY_NAVIGATION" />
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
     <!-- Notificaties: runtime-permissie vereist vanaf Android 13 (API 33) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -38,7 +45,27 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Intent filter voor "Deel naar YT Auto" -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             CAR APP SERVICE (De Video-Hack)
+             ═══════════════════════════════════════════════════════════ -->
+        <service
+            android:name=".service.YTCarAppService"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.NAVIGATION" />
+            </intent-filter>
+        </service>
 
         <!-- ═══════════════════════════════════════════════════════════
              MEDIA3 LIBRARY SERVICE (Kern van de app)
@@ -73,6 +100,19 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <!-- Resolve conflict between app-projected and app-automotive -->
+        <service
+            android:name="androidx.car.app.CarAppMetadataHolderService"
+            android:enabled="true"
+            android:exported="false"
+            tools:ignore="Instantiatable,MissingPrimaryBinder"
+            tools:replace="android:enabled">
+            <meta-data
+                android:name="androidx.car.app.CarAppMetadataHolderService.CAR_HARDWARE_MANAGER"
+                android:value="androidx.car.app.hardware.AutomotiveCarHardwareManager"
+                tools:replace="android:value" />
+        </service>
 
     </application>
 

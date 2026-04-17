@@ -10,4 +10,6 @@
 -->
 <automotiveApp>
     <uses name="media" />
+    <uses name="navigation" />
+    <uses name="template" />
 </automotiveApp>

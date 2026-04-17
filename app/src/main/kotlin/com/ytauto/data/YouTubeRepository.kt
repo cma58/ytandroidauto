@@ -120,6 +120,36 @@ class YouTubeRepository {
     }
 
     /**
+     * Haalt de directe VIDEO-stream URL op voor een YouTube-video.
+     * Kiest bij voorkeur een stream die zowel video als audio bevat (muxed).
+     */
+    suspend fun getVideoStreamUrl(videoUrl: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val streamInfo = StreamInfo.getInfo(youtubeService, videoUrl)
+                
+                // 1. Probeer eerst Muxed MP4 (Video + Audio in één) - Meest stabiel
+                val bestMuxed = streamInfo.videoStreams
+                    .filter { it.format?.mimeType?.contains("mp4") == true }
+                    .maxByOrNull { it.resolution }
+
+                if (bestMuxed != null) {
+                    android.util.Log.d(TAG, "Selected muxed MP4: ${bestMuxed.resolution}")
+                    return@withContext bestMuxed.content
+                }
+
+                // 2. Fallback: Eerste beschikbare video stream
+                val fallback = streamInfo.videoStreams.firstOrNull()
+                android.util.Log.d(TAG, "Selected fallback stream: ${fallback?.resolution}")
+                fallback?.content
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Failed to get video URL for: $videoUrl", e)
+                null
+            }
+        }
+    }
+
+    /**
      * Haalt volledige metadata op voor een video (voor de Now Playing weergave).
      *
      * @param videoUrl De YouTube video URL

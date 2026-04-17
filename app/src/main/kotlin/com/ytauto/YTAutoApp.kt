@@ -2,6 +2,7 @@ package com.ytauto
 
 import android.app.Application
 import com.ytauto.data.AppDownloader
+import com.ytauto.shizuku.ShizukuManager
 import org.schabi.newpipe.extractor.NewPipe
 
 /**
@@ -16,8 +17,13 @@ class YTAutoApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // Initialiseer Shizuku
+        ShizukuManager.init()
+
         // Initialiseer NewPipe Extractor met onze OkHttp-gebaseerde Downloader.
-        // Dit stelt de HTTP-client in die NewPipe gebruikt voor alle requests.
-        NewPipe.init(AppDownloader.getInstance())
+        NewPipe.init(
+            com.ytauto.data.AppDownloader.getInstance(),
+            org.schabi.newpipe.extractor.localization.Localization.DEFAULT
+        )
     }
 }

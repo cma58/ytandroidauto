@@ -3,6 +3,7 @@ package com.ytauto.ui
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -15,245 +16,175 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.ytauto.data.SearchResult
 import com.ytauto.data.YouTubeRepository
 import com.ytauto.service.PlaybackService
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/**
- * MainViewModel — ViewModel voor de mobiele Compose UI
- *
- * Beheert:
- * 1. **Zoekstatus**: query, resultaten, loading state
- * 2. **MediaController**: verbinding met de PlaybackService
- * 3. **Now Playing**: huidige track-informatie
- *
- * De MediaController is de "afstandsbediening" waarmee de UI
- * commando's stuurt naar de PlaybackService (play, pause, seek, etc.)
- */
 class MainViewModel : ViewModel() {
 
     private val youtubeRepo = YouTubeRepository()
 
-    // ── Zoekstatus ──
+    // ── UI States ──
     private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    val searchQuery = _searchQuery.asStateFlow()
 
     private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
-    val searchResults: StateFlow<List<SearchResult>> = _searchResults.asStateFlow()
+    val searchResults = _searchResults.asStateFlow()
 
     private val _isSearching = MutableStateFlow(false)
-    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+    val isSearching = _isSearching.asStateFlow()
 
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
-
-    // ── Now Playing status ──
     private val _nowPlaying = MutableStateFlow<NowPlayingState?>(null)
-    val nowPlaying: StateFlow<NowPlayingState?> = _nowPlaying.asStateFlow()
+    val nowPlaying = _nowPlaying.asStateFlow()
+
+    private val _queue = MutableStateFlow<List<MediaItem>>(emptyList())
+    val queue = _queue.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
-    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+    val isPlaying = _isPlaying.asStateFlow()
 
-    // ── MediaController ──
-    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private val _currentPosition = MutableStateFlow(0L)
+    val currentPosition = _currentPosition.asStateFlow()
+
+    private val _duration = MutableStateFlow(0L)
+    val duration = _duration.asStateFlow()
+
+    private val _dominantColor = MutableStateFlow<Int?>(null)
+    val dominantColor = _dominantColor.asStateFlow()
+
+    private val _isVideoMode = MutableStateFlow(false)
+    val isVideoMode = _isVideoMode.asStateFlow()
+
     private var mediaController: MediaController? = null
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var progressJob: Job? = null
 
-    // ═══════════════════════════════════════════════════════════════
-    // MEDIACONTROLLER VERBINDING
-    // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * Maakt verbinding met de PlaybackService via een MediaController.
-     * Moet aangeroepen worden vanuit een Activity (heeft Context nodig).
-     */
     fun connectToService(context: Context) {
-        if (mediaController != null) return // Al verbonden
-
-        val sessionToken = SessionToken(
-            context,
-            ComponentName(context, PlaybackService::class.java)
-        )
-
-        controllerFuture = MediaController.Builder(context, sessionToken)
-            .buildAsync()
-
-        controllerFuture?.addListener(
-            {
-                try {
-                    mediaController = controllerFuture?.get()
-                    setupPlayerListener()
-                    // Synchroniseer de huidige staat als er al iets afspeelt
-                    syncNowPlaying()
-                } catch (e: Exception) {
-                    android.util.Log.e(TAG, "Failed to connect to service", e)
-                }
-            },
-            MoreExecutors.directExecutor()
-        )
+        if (mediaController != null) return
+        val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+        controllerFuture?.addListener({
+            mediaController = controllerFuture?.get()
+            setupPlayerListener()
+            syncState()
+        }, MoreExecutors.directExecutor())
     }
 
-    /**
-     * Verbreekt de verbinding met de service.
-     * Moet aangeroepen worden wanneer de Activity stopt.
-     */
-    fun disconnectFromService() {
-        controllerFuture?.let {
-            MediaController.releaseFuture(it)
-        }
-        mediaController = null
-        controllerFuture = null
-    }
-
-    /**
-     * Luistert naar veranderingen in de player-staat.
-     */
     private fun setupPlayerListener() {
         mediaController?.addListener(object : Player.Listener {
-            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-                syncNowPlaying()
-            }
-
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) { syncState() }
+            override fun onPlaybackStateChanged(state: Int) { syncState() }
             override fun onIsPlayingChanged(playing: Boolean) {
                 _isPlaying.value = playing
+                if (playing) startProgressUpdate() else stopProgressUpdate()
             }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                syncNowPlaying()
-            }
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) { syncQueue() }
         })
     }
 
-    /**
-     * Synchroniseert de Now Playing status met de huidige player-staat.
-     */
-    private fun syncNowPlaying() {
+    private fun syncState() {
         val controller = mediaController ?: return
-        val currentItem = controller.currentMediaItem
-
-        if (currentItem != null) {
-            val metadata = currentItem.mediaMetadata
+        val item = controller.currentMediaItem
+        if (item != null) {
             _nowPlaying.value = NowPlayingState(
-                title = metadata.title?.toString() ?: "Onbekend",
-                artist = metadata.artist?.toString() ?: "Onbekend",
-                artworkUri = metadata.artworkUri
+                title = item.mediaMetadata.title?.toString() ?: "Unknown",
+                artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
+                artworkUri = item.mediaMetadata.artworkUri
             )
-            _isPlaying.value = controller.isPlaying
-        } else {
-            _nowPlaying.value = null
-            _isPlaying.value = false
+            _duration.value = controller.duration.coerceAtLeast(0L)
+            syncQueue()
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // ZOEKEN
-    // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * Werkt de zoekquery bij (voor de zoekbalk UI).
-     */
-    fun onQueryChanged(query: String) {
-        _searchQuery.value = query
+    private fun syncQueue() {
+        val controller = mediaController ?: return
+        val items = mutableListOf<MediaItem>()
+        for (i in 0 until controller.mediaItemCount) {
+            items.add(controller.getMediaItemAt(i))
+        }
+        val currentIndex = controller.currentMediaItemIndex
+        _queue.value = if (currentIndex < items.size - 1) items.subList(currentIndex + 1, items.size) else emptyList()
     }
 
-    /**
-     * Voert een zoekopdracht uit op YouTube.
-     */
-    fun search() {
-        val query = _searchQuery.value.trim()
-        if (query.isBlank()) return
-
-        viewModelScope.launch {
-            _isSearching.value = true
-            _errorMessage.value = null
-
-            try {
-                val results = youtubeRepo.search(query)
-                _searchResults.value = results
-
-                if (results.isEmpty()) {
-                    _errorMessage.value = "Geen resultaten gevonden voor '$query'"
+    private fun startProgressUpdate() {
+        progressJob?.cancel()
+        progressJob = viewModelScope.launch {
+            while (isActive) {
+                mediaController?.let { 
+                    _currentPosition.value = it.currentPosition
+                    if (_duration.value <= 0) _duration.value = it.duration
                 }
-            } catch (e: Exception) {
-                _errorMessage.value = "Zoeken mislukt: ${e.localizedMessage}"
-                android.util.Log.e(TAG, "Search failed", e)
-            } finally {
-                _isSearching.value = false
+                delay(500) // Snellere update voor vloeiende slider
             }
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // AFSPELEN
-    // ═══════════════════════════════════════════════════════════════
+    private fun stopProgressUpdate() { progressJob?.cancel() }
 
-    /**
-     * Speelt een zoekresultaat af.
-     *
-     * Stuurt een [MediaItem] naar de PlaybackService met de YouTube URL
-     * als mediaId. De service resolved de audio-URL in onAddMediaItems().
-     */
     fun playItem(result: SearchResult) {
         val controller = mediaController ?: return
+        val results = _searchResults.value
+        val mediaItems = results.map { it.toMediaItem() }
+        val startIndex = results.indexOfFirst { it.videoUrl == result.videoUrl }.coerceAtLeast(0)
 
-        // Bouw het MediaItem met metadata (voor de notificatie en Auto)
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(result.videoUrl)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(result.title)
-                    .setArtist(result.artist)
-                    .setArtworkUri(result.thumbnailUrl?.let { Uri.parse(it) })
-                    .setIsPlayable(true)
-                    .setIsBrowsable(false)
-                    .build()
-            )
-            .build()
-
-        // Stel het item in en begin met afspelen
-        controller.setMediaItem(mediaItem)
+        controller.setMediaItems(mediaItems, startIndex, 0L)
         controller.prepare()
         controller.play()
-
-        // Update de UI direct (de listener update later met echte status)
-        _nowPlaying.value = NowPlayingState(
-            title = result.title,
-            artist = result.artist,
-            artworkUri = result.thumbnailUrl?.let { Uri.parse(it) }
-        )
     }
 
-    /**
-     * Toggle play/pause.
-     */
-    fun togglePlayPause() {
+    fun skipToQueueItem(indexInQueue: Int) {
         val controller = mediaController ?: return
-        if (controller.isPlaying) {
-            controller.pause()
-        } else {
+        val absoluteIndex = controller.currentMediaItemIndex + 1 + indexInQueue
+        if (absoluteIndex < controller.mediaItemCount) {
+            controller.seekToDefaultPosition(absoluteIndex)
             controller.play()
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // CLEANUP
-    // ═══════════════════════════════════════════════════════════════
-
-    override fun onCleared() {
-        super.onCleared()
-        disconnectFromService()
+    fun onQueryChanged(q: String) { _searchQuery.value = q }
+    fun search() {
+        if (_searchQuery.value.isBlank()) return
+        viewModelScope.launch {
+            _isSearching.value = true
+            try { _searchResults.value = youtubeRepo.search(_searchQuery.value) } catch (e: Exception) {}
+            finally { _isSearching.value = false }
+        }
     }
 
-    companion object {
-        private const val TAG = "MainViewModel"
+    fun togglePlayPause() {
+        mediaController?.let { if (it.isPlaying) it.pause() else it.play() }
+    }
+
+    fun seekTo(pos: Long) { mediaController?.seekTo(pos) }
+    fun skipNext() { mediaController?.seekToNext() }
+    fun skipPrevious() { mediaController?.seekToPrevious() }
+    fun updateDominantColor(color: Int?) { _dominantColor.value = color }
+    fun getController(): Player? = mediaController
+    fun disconnectFromService() {
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        mediaController = null
+    }
+
+    private fun SearchResult.toMediaItem() = MediaItem.Builder()
+        .setMediaId(videoUrl)
+        .setMediaMetadata(MediaMetadata.Builder()
+            .setTitle(title).setArtist(artist)
+            .setArtworkUri(thumbnailUrl?.let { Uri.parse(it) })
+            .setIsPlayable(true).build())
+        .build()
+
+    fun toggleVideoMode() {
+        val newMode = !_isVideoMode.value
+        _isVideoMode.value = newMode
+        mediaController?.sendCustomCommand(
+            androidx.media3.session.SessionCommand(PlaybackService.ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY),
+            Bundle().apply { putBoolean(PlaybackService.EXTRA_VIDEO_MODE, newMode) }
+        )
     }
 }
 
-/**
- * Staat van het huidige afspeelende item.
- */
-data class NowPlayingState(
-    val title: String,
-    val artist: String,
-    val artworkUri: Uri?
-)
+data class NowPlayingState(val title: String, val artist: String, val artworkUri: Uri?)

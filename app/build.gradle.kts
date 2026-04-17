@@ -3,6 +3,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("kotlin-kapt")
 }
 
 android {
@@ -71,9 +72,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
 
     // ── NewPipe Extractor (YouTube scraper) ──
-    // Via JitPack vanuit de officiële TeamNewPipe repository.
-    // Controleer https://github.com/AkshayVR/NewPipeExtractor voor de laatste versie.
-    implementation("com.github.AkshayVR:NewPipeExtractor:v0.24.2")
+    // Gebruik de officiële TeamNewPipe repository voor stabiliteit.
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
 
     // ── OkHttp (voor de NewPipe Downloader implementatie) ──
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -81,6 +81,32 @@ dependencies {
     // ── AndroidX Core ──
     implementation("androidx.core:core-ktx:1.15.0")
 
+    // ── Android Car App Library (voor de Video-Hack) ──
+    // app-automotive is ALLEEN voor Automotive OS. Voor telefoon + Android Auto projectie:
+    val carAppVersion = "1.7.0"
+    implementation("androidx.car.app:app:$carAppVersion")
+    implementation("androidx.car.app:app-projected:$carAppVersion")
+
+    // ── Palette API ──
+    implementation("androidx.palette:palette-ktx:1.0.0")
+
+    // ── WorkManager (voor Offline Sync) ──
+    val workVersion = "2.10.0"
+    implementation("androidx.work:work-runtime-ktx:$workVersion")
+
+    // ── Room (Database voor Offline Tracks) ──
+    val roomVersion = "2.7.0-alpha11"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    // Gebruik KSP voor Room (als KSP is geconfigureerd) of kapt
+    // Voor nu voegen we kapt toe voor eenvoudige compatibiliteit
+    kapt("androidx.room:room-compiler:$roomVersion")
+
     // ── Guava (voor ListenableFuture in Media3 callbacks) ──
     implementation("com.google.guava:guava:33.3.1-android")
+
+    // ── Shizuku (voor diepe systeemtoegang zonder root) ──
+    val shizukuVersion = "13.1.0"
+    implementation("dev.rikka.shizuku:api:$shizukuVersion")
+    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 }

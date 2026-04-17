@@ -42,13 +42,19 @@ class AppDownloader private constructor() : Downloader() {
         // Bouw het OkHttp Request-object
         val requestBuilder = okhttp3.Request.Builder()
             .url(url)
-            // Voeg een standaard User-Agent toe zodat YouTube ons niet blokkeert
-            .header("User-Agent", USER_AGENT)
+
+        // Voeg standaard headers toe, maar sta toe dat NewPipe ze overschrijft
+        requestBuilder.header("User-Agent", USER_AGENT)
+        requestBuilder.header("Accept-Language", "en-US,en;q=0.9")
 
         // Voeg alle headers van NewPipe toe
         headers?.forEach { (key, values) ->
-            values.forEach { value ->
-                requestBuilder.addHeader(key, value)
+            values.forEachIndexed { index, value ->
+                if (index == 0) {
+                    requestBuilder.header(key, value)
+                } else {
+                    requestBuilder.addHeader(key, value)
+                }
             }
         }
 
@@ -84,11 +90,11 @@ class AppDownloader private constructor() : Downloader() {
     }
 
     companion object {
-        // User-Agent die YouTube accepteert (desktop browser)
+        // User-Agent die YouTube accepteert (recente desktop browser)
         private const val USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/120.0.0.0 Safari/537.36"
+            "Chrome/131.0.0.0 Safari/537.36"
 
         @Volatile
         private var instance: AppDownloader? = null
