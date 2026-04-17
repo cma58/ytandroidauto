@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
+import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.common.AudioAttributes
@@ -33,10 +34,13 @@ import com.ytauto.data.YouTubeRepository
 import com.ytauto.db.AppDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -50,8 +54,12 @@ class PlaybackService : MediaLibraryService() {
 
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizer: Equalizer? = null
+    private var bassBoost: BassBoost? = null
+    
     private var isCrossfading = false
+    private var positionTrackingJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val CROSSFADE_DURATION_MS = 3000L
 
     private var isVideoModeEnabled = false
     private val searchResultsCache = mutableMapOf<String, List<SearchResult>>()
@@ -91,9 +99,14 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
-                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
-                    applyCrossfade()
+                fadeIn()
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    startPositionTracking()
+                } else {
+                    positionTrackingJob?.cancel()
                 }
             }
         })
@@ -105,28 +118,86 @@ class PlaybackService : MediaLibraryService() {
 
     private fun setupAudioEffects(sessionId: Int) {
         try {
+            // 1. Volume Normalisatie (Loudness Enhancer)
+            loudnessEnhancer?.release()
             loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
-                setTargetGain(1000)
+                setTargetGain(1500) // 15dB boost om YouTube volume verschillen op te vangen
                 enabled = true
             }
-            equalizer = Equalizer(0, sessionId).apply { enabled = true }
+
+            // 2. Bass Boost (Car Tuning)
+            bassBoost?.release()
+            bassBoost = BassBoost(0, sessionId).apply {
+                if (strengthSupported) {
+                    setStrength(800.toShort()) // Krachtige maar gecontroleerde bas
+                }
+                enabled = true
+            }
+
+            // 3. Equalizer (V-Curve)
+            equalizer?.release()
+            equalizer = Equalizer(0, sessionId).apply {
+                if (numberOfBands >= 5) {
+                    setBandLevel(0, 500)   // 60Hz: +5dB
+                    setBandLevel(1, 200)   // 230Hz: +2dB
+                    setBandLevel(2, -200)  // 910Hz: -2dB (Vocals focus)
+                    setBandLevel(3, 300)   // 3.6kHz: +3dB
+                    setBandLevel(4, 600)   // 14kHz: +6dB (Sparkle)
+                }
+                enabled = true
+            }
+            Log.d(TAG, "Audio Engine Phase 3: Effects active on session $sessionId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to setup audio effects", e)
         }
     }
 
-    private fun applyCrossfade() {
+    private fun startPositionTracking() {
+        positionTrackingJob?.cancel()
+        positionTrackingJob = serviceScope.launch {
+            while (isActive) {
+                if (player.isPlaying && player.duration > 0) {
+                    val remaining = player.duration - player.currentPosition
+                    if (remaining in 1..CROSSFADE_DURATION_MS && !isCrossfading && player.hasNextMediaItem()) {
+                        fadeOutAndNext()
+                    }
+                }
+                delay(500)
+            }
+        }
+    }
+
+    private fun fadeIn() {
         serviceScope.launch {
             if (isCrossfading) return@launch
             isCrossfading = true
+            var vol = 0f
             player.volume = 0f
             val steps = 20
-            val duration = 2000L
             for (i in 1..steps) {
-                kotlinx.coroutines.delay(duration / steps)
-                player.volume = i.toFloat() / steps
+                delay(CROSSFADE_DURATION_MS / steps)
+                vol += 1f / steps
+                player.volume = vol.coerceAtMost(1f)
             }
             player.volume = 1f
+            isCrossfading = false
+        }
+    }
+
+    private fun fadeOutAndNext() {
+        serviceScope.launch {
+            isCrossfading = true
+            var vol = player.volume
+            val steps = 20
+            for (i in 1..steps) {
+                delay(CROSSFADE_DURATION_MS / steps)
+                vol -= 1f / steps
+                player.volume = vol.coerceAtLeast(0f)
+            }
+            if (player.hasNextMediaItem()) {
+                player.seekToNextMediaItem()
+                player.play()
+            }
             isCrossfading = false
         }
     }
@@ -134,6 +205,8 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         loudnessEnhancer?.release()
         equalizer?.release()
+        bassBoost?.release()
+        positionTrackingJob?.cancel()
         mediaLibrarySession?.run {
             player.release()
             release()
