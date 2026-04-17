@@ -101,19 +101,6 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
-        <!-- Resolve conflict between app-projected and app-automotive -->
-        <service
-            android:name="androidx.car.app.CarAppMetadataHolderService"
-            android:enabled="true"
-            android:exported="false"
-            tools:ignore="Instantiatable,MissingPrimaryBinder"
-            tools:replace="android:enabled">
-            <meta-data
-                android:name="androidx.car.app.CarAppMetadataHolderService.CAR_HARDWARE_MANAGER"
-                android:value="androidx.car.app.hardware.AutomotiveCarHardwareManager"
-                tools:replace="android:value" />
-        </service>
-
     </application>
 
 </manifest>
