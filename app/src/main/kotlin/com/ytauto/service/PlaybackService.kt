@@ -32,6 +32,7 @@ import com.google.common.util.concurrent.SettableFuture
 import com.ytauto.data.SearchResult
 import com.ytauto.data.YouTubeRepository
 import com.ytauto.db.AppDatabase
+import com.ytauto.db.RecentTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -64,6 +65,7 @@ class PlaybackService : MediaLibraryService() {
     private var isVideoModeEnabled = false
     private val searchResultsCache = mutableMapOf<String, List<SearchResult>>()
     private var lastSearchQuery: String = ""
+    private var partyServer: com.ytauto.remote.PartyServer? = null
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
@@ -92,14 +94,33 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         player.addListener(object : Player.Listener {
-            override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
-                    setupAudioEffects(audioSessionId)
-                }
-            }
-
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 fadeIn()
+                mediaItem?.let { item ->
+                    serviceScope.launch {
+                        val db = AppDatabase.getDatabase(this@PlaybackService)
+                        val recentTrack = RecentTrack(
+                            videoUrl = item.mediaId,
+                            title = item.mediaMetadata.title?.toString() ?: "Unknown",
+                            artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
+                            thumbnailUrl = item.mediaMetadata.artworkUri?.toString(),
+                            durationSeconds = player.duration / 1000
+                        )
+                        db.recentTrackDao().addAndTrim(recentTrack)
+
+                        // Log PlayEvent for AI Analytics
+                        db.playEventDao().insertEvent(
+                            com.ytauto.db.PlayEvent(
+                                mediaId = item.mediaId,
+                                title = item.mediaMetadata.title?.toString() ?: "Unknown",
+                                artist = item.mediaMetadata.artist?.toString()
+                            )
+                        )
+                        
+                        // Increment play count for offline track
+                        db.offlineTrackDao().incrementPlayCount(item.mediaId)
+                    }
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -112,6 +133,34 @@ class PlaybackService : MediaLibraryService() {
         })
 
         mediaLibrarySession = MediaLibrarySession.Builder(this, player, librarySessionCallback).build()
+
+        partyServer = com.ytauto.remote.PartyServer { url ->
+            serviceScope.launch {
+                handleIncomingUrl(url)
+            }
+        }.apply { start() }
+    }
+
+    private suspend fun handleIncomingUrl(url: String) {
+        val mediaItem = if (url.contains("spotify.com")) {
+            // Very basic Spotify to YouTube conversion hint: search by title if we can get it.
+            // For now, let's just search the URL or treat it as query if it's not a direct YT link.
+            val results = youtubeRepo.search(url, maxResults = 1)
+            results.firstOrNull()?.toMediaItem()
+        } else {
+            val streamUrl = if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(url) else youtubeRepo.getAudioStreamUrl(url)
+            if (streamUrl != null) {
+                // If it's a direct ID or URL, we might need to fetch metadata too. 
+                // For simplicity, search it.
+                val results = youtubeRepo.search(url, maxResults = 1)
+                results.firstOrNull()?.toMediaItem()
+            } else null
+        }
+
+        mediaItem?.let {
+            player.addMediaItem(it)
+            if (!player.isPlaying) player.prepare(); player.play()
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaLibrarySession
@@ -203,6 +252,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        partyServer?.stop()
         loudnessEnhancer?.release()
         equalizer?.release()
         bassBoost?.release()
@@ -241,12 +291,59 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return when (parentId) {
                 ROOT_ID -> {
-                    val categories = ImmutableList.of(buildBrowsableItem(SEARCH_RESULTS_ID, "Zoekresultaten", "Gebruik de zoekfunctie"))
+                    val categories = ImmutableList.of(
+                        buildBrowsableItem(RECENT_TRACKS_ID, "Recent gespeeld", "Je laatst geluisterde nummers"),
+                        buildBrowsableItem(FOR_YOU_ID, "Speciaal voor Jou", "AI-gegenereerde aanbevelingen"),
+                        buildBrowsableItem(SEARCH_RESULTS_ID, "Zoekresultaten", "Gebruik de zoekfunctie"),
+                        buildBrowsableItem(OFFLINE_TRACKS_ID, "Bibliotheek", "Gedownloade nummers")
+                    )
                     Futures.immediateFuture(LibraryResult.ofItemList(categories, params))
+                }
+                RECENT_TRACKS_ID -> {
+                    val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+                    serviceScope.launch {
+                        val db = AppDatabase.getDatabase(this@PlaybackService)
+                        val tracks = db.recentTrackDao().getAllRecentTracksOnce()
+                        val mediaItems = tracks.map { it.toMediaItem() }
+                        future.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
+                    }
+                    future
+                }
+                FOR_YOU_ID -> {
+                    val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+                    serviceScope.launch {
+                        val db = AppDatabase.getDatabase(this@PlaybackService)
+                        val topArtists = db.playEventDao().getTopArtists()
+                        val recommendations = mutableListOf<MediaItem>()
+                        
+                        topArtists.forEach { artistCount ->
+                            val results = youtubeRepo.search(artistCount.artist, maxResults = 3)
+                            recommendations.addAll(results.map { it.toMediaItem() })
+                        }
+                        
+                        // If no analytics yet, show some defaults or empty
+                        if (recommendations.isEmpty()) {
+                            val results = youtubeRepo.search("Trending Music", maxResults = 10)
+                            recommendations.addAll(results.map { it.toMediaItem() })
+                        }
+
+                        future.set(LibraryResult.ofItemList(ImmutableList.copyOf(recommendations.distinctBy { it.mediaId }), params))
+                    }
+                    future
                 }
                 SEARCH_RESULTS_ID -> {
                     val results = searchResultsCache[lastSearchQuery]?.map { it.toMediaItem() } ?: emptyList()
                     Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(results), params))
+                }
+                OFFLINE_TRACKS_ID -> {
+                    val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+                    serviceScope.launch {
+                        val db = AppDatabase.getDatabase(this@PlaybackService)
+                        val tracks = db.offlineTrackDao().getAllTracksOnce()
+                        val mediaItems = tracks.map { it.toMediaItem() }
+                        future.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
+                    }
+                    future
                 }
                 else -> Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.of(), params))
             }
@@ -281,12 +378,23 @@ class PlaybackService : MediaLibraryService() {
                     val offlineDao = db.offlineTrackDao()
                     val deferredItems = mediaItems.map { item ->
                         async(Dispatchers.IO) {
-                            val offlineTrack = offlineDao.getTrackByUrl(item.mediaId)
-                            if (offlineTrack != null && java.io.File(offlineTrack.localPath).exists()) {
-                                return@async item.buildUpon().setUri(Uri.fromFile(java.io.File(offlineTrack.localPath))).build()
+                            // Handle potential search query from Voice Assistant
+                            val searchQuery = item.requestMetadata.searchQuery
+                            val mediaItemToResolve = if (!searchQuery.isNullOrEmpty()) {
+                                val searchResults = youtubeRepo.search(searchQuery, maxResults = 1)
+                                if (searchResults.isNotEmpty()) searchResults[0].toMediaItem() else null
+                            } else {
+                                item
                             }
-                            val streamUrl = if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(item.mediaId) else youtubeRepo.getAudioStreamUrl(item.mediaId)
-                            streamUrl?.let { item.buildUpon().setUri(Uri.parse(it)).build() }
+
+                            if (mediaItemToResolve == null) return@async null
+
+                            val offlineTrack = offlineDao.getTrackByUrl(mediaItemToResolve.mediaId)
+                            if (offlineTrack != null && java.io.File(offlineTrack.localPath).exists()) {
+                                return@async mediaItemToResolve.buildUpon().setUri(Uri.fromFile(java.io.File(offlineTrack.localPath))).build()
+                            }
+                            val streamUrl = if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(mediaItemToResolve.mediaId) else youtubeRepo.getAudioStreamUrl(mediaItemToResolve.mediaId)
+                            streamUrl?.let { mediaItemToResolve.buildUpon().setUri(Uri.parse(it)).build() }
                         }
                     }
                     future.set(deferredItems.awaitAll().filterNotNull())
@@ -302,6 +410,7 @@ class PlaybackService : MediaLibraryService() {
             val connectionResult = super.onConnect(session, controller)
             val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
             availableSessionCommands.add(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
+            availableSessionCommands.add(SessionCommand(ACTION_SET_AUDIO_EFFECTS, Bundle.EMPTY))
             return MediaSession.ConnectionResult.accept(availableSessionCommands.build(), connectionResult.availablePlayerCommands)
         }
 
@@ -315,6 +424,22 @@ class PlaybackService : MediaLibraryService() {
                     if (isVideoModeEnabled != newValue) {
                         isVideoModeEnabled = newValue
                         refreshCurrentItem()
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_SET_AUDIO_EFFECTS -> {
+                    if (args.containsKey(EXTRA_BASS_BOOST)) {
+                        val strength = args.getInt(EXTRA_BASS_BOOST)
+                        bassBoost?.let { if (it.strengthSupported) it.setStrength(strength.toShort()) }
+                    }
+                    if (args.containsKey(EXTRA_LOUDNESS)) {
+                        val gain = args.getInt(EXTRA_LOUDNESS)
+                        loudnessEnhancer?.setTargetGain(gain)
+                    }
+                    if (args.containsKey(EXTRA_EQ_BAND_INDEX) && args.containsKey(EXTRA_EQ_BAND_LEVEL)) {
+                        val index = args.getInt(EXTRA_EQ_BAND_INDEX)
+                        val level = args.getInt(EXTRA_EQ_BAND_LEVEL)
+                        equalizer?.let { if (index < it.numberOfBands) it.setBandLevel(index.toShort(), level.toShort()) }
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -353,10 +478,44 @@ class PlaybackService : MediaLibraryService() {
         private const val TAG = "PlaybackService"
         const val ACTION_TOGGLE_VIDEO_MODE = "com.ytauto.ACTION_TOGGLE_VIDEO_MODE"
         const val EXTRA_VIDEO_MODE = "extra_video_mode"
+        const val ACTION_SET_AUDIO_EFFECTS = "com.ytauto.ACTION_SET_AUDIO_EFFECTS"
+        const val EXTRA_BASS_BOOST = "extra_bass_boost"
+        const val EXTRA_LOUDNESS = "extra_loudness"
+        const val EXTRA_EQ_BAND_INDEX = "extra_eq_band_index"
+        const val EXTRA_EQ_BAND_LEVEL = "extra_eq_band_level"
         const val NOTIFICATION_CHANNEL_ID = "ytauto_playback"
         const val ROOT_ID = "[rootID]"
         const val SEARCH_RESULTS_ID = "[searchResultsID]"
+        const val OFFLINE_TRACKS_ID = "[offlineTracksID]"
+        const val RECENT_TRACKS_ID = "[recentTracksID]"
+        const val FOR_YOU_ID = "[forYouID]"
     }
+}
+
+private fun RecentTrack.toMediaItem(): MediaItem {
+    val metadata = MediaMetadata.Builder()
+        .setTitle(title)
+        .setArtist(artist)
+        .setIsBrowsable(false)
+        .setIsPlayable(true)
+    thumbnailUrl?.let { metadata.setArtworkUri(Uri.parse(it)) }
+    return MediaItem.Builder()
+        .setMediaId(videoUrl)
+        .setMediaMetadata(metadata.build())
+        .build()
+}
+
+private fun com.ytauto.db.OfflineTrack.toMediaItem(): MediaItem {
+    val metadata = MediaMetadata.Builder()
+        .setTitle(title)
+        .setArtist(artist)
+        .setIsBrowsable(false)
+        .setIsPlayable(true)
+    thumbnailUrl?.let { metadata.setArtworkUri(Uri.parse(it)) }
+    return MediaItem.Builder()
+        .setMediaId(videoUrl)
+        .setMediaMetadata(metadata.build())
+        .build()
 }
 
 private fun SearchResult.toMediaItem(): MediaItem {

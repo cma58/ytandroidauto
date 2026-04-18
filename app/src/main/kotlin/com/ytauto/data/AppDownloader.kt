@@ -1,110 +1,151 @@
 package com.ytauto.data
 
+import android.content.Context
+import android.util.Log
+import com.ytauto.db.AppDatabase
+import com.ytauto.db.OfflineTrack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.downloader.Downloader
-import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
-import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * AppDownloader — OkHttp-implementatie van de NewPipe Downloader
- *
- * NewPipe Extractor heeft een [Downloader] nodig om HTTP-requests te doen.
- * Deze klasse implementeert dat met OkHttp, wat betrouwbaarder en sneller is
- * dan de standaard HttpURLConnection.
- *
- * Singleton-patroon: er hoeft maar één instantie te bestaan.
+ * AppDownloader — Verantwoordelijk voor het downloaden van YouTube streams naar lokale opslag
+ * EN fungeert als de Downloader voor de NewPipe Extractor.
  */
-class AppDownloader private constructor() : Downloader() {
+class AppDownloader private constructor(private val context: Context) : Downloader() {
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val downloadProgress = _downloadProgress.asStateFlow()
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
         .build()
 
-    /**
-     * Voert een HTTP-request uit namens NewPipe Extractor.
-     *
-     * @param request Het Request-object van NewPipe met URL, method, headers, en body.
-     * @return Een Response-object dat NewPipe kan verwerken.
-     * @throws ReCaptchaException Als YouTube een CAPTCHA eist (HTTP 429).
-     */
-    override fun execute(request: Request): Response {
+    // --- NewPipe Downloader Implementatie ---
+
+    @Throws(IOException::class)
+    override fun execute(request: org.schabi.newpipe.extractor.downloader.Request): Response {
+        val method = request.httpMethod()
         val url = request.url()
-        val httpMethod = request.httpMethod()
         val headers = request.headers()
         val dataToSend = request.dataToSend()
 
-        // Bouw het OkHttp Request-object
-        val requestBuilder = okhttp3.Request.Builder()
+        val okHttpRequestBuilder = Request.Builder()
             .url(url)
+            .method(method, dataToSend?.toRequestBody(null))
 
-        // Voeg standaard headers toe, maar sta toe dat NewPipe ze overschrijft
-        requestBuilder.header("User-Agent", USER_AGENT)
-        requestBuilder.header("Accept-Language", "en-US,en;q=0.9")
-
-        // Voeg alle headers van NewPipe toe
-        headers?.forEach { (key, values) ->
-            values.forEachIndexed { index, value ->
-                if (index == 0) {
-                    requestBuilder.header(key, value)
-                } else {
-                    requestBuilder.addHeader(key, value)
-                }
+        headers.forEach { (key, values) ->
+            values.forEach { value ->
+                okHttpRequestBuilder.addHeader(key, value)
             }
         }
 
-        // Stel de HTTP-methode in met optionele body
-        val body = dataToSend?.toRequestBody()
-        when (httpMethod) {
-            "GET" -> requestBuilder.get()
-            "HEAD" -> requestBuilder.head()
-            "POST" -> requestBuilder.post(body ?: byteArrayOf().toRequestBody())
-            else -> requestBuilder.method(httpMethod, body)
-        }
-
-        // Voer het request uit
-        val response = client.newCall(requestBuilder.build()).execute()
-
-        // YouTube stuurt HTTP 429 als het denkt dat je een bot bent
-        if (response.code == 429) {
-            response.close()
-            throw ReCaptchaException("Rate limited by YouTube", url)
-        }
-
-        // Lees de response body en headers
-        val responseBody = response.body?.string().orEmpty()
-        val responseHeaders = response.headers.toMultimap()
+        val okHttpResponse = client.newCall(okHttpRequestBuilder.build()).execute()
+        val responseBody = okHttpResponse.body?.string()
 
         return Response(
-            response.code,
-            response.message,
-            responseHeaders,
+            okHttpResponse.code,
+            okHttpResponse.message,
+            okHttpResponse.headers.toMultimap(),
             responseBody,
-            url
+            okHttpResponse.request.url.toString()
         )
     }
 
+    // --- Bestaande download functionaliteit ---
+
+    private val youtubeRepo = YouTubeRepository()
+    private val offlineDao = AppDatabase.getDatabase(context).offlineTrackDao()
+
+    /**
+     * Downloadt een track naar de interne opslag en registreert deze in de database.
+     */
+    suspend fun downloadTrack(videoUrl: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Starting download for: $videoUrl")
+            
+            // 1. Haal de stream URL en metadata op
+            val streamUrl = youtubeRepo.getAudioStreamUrl(videoUrl) ?: return@withContext false
+            val metadata = youtubeRepo.getVideoMetadata(videoUrl) ?: return@withContext false
+            
+            // 2. Bereid het lokale bestand voor
+            val fileName = "${videoUrl.hashCode()}.m4a"
+            val outputFile = File(context.filesDir, "downloads/$fileName")
+            outputFile.parentFile?.mkdirs()
+
+            // 3. Voer de werkelijke download uit
+            val request = Request.Builder().url(streamUrl).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext false
+                
+                val body = response.body ?: return@withContext false
+                val contentLength = body.contentLength()
+                var bytesRead = 0L
+                
+                FileOutputStream(outputFile).use { output ->
+                    val buffer = ByteArray(8192)
+                    var read: Int
+                    val inputStream = body.byteStream()
+                    while (inputStream.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        bytesRead += read
+                        if (contentLength > 0) {
+                            val progress = bytesRead.toFloat() / contentLength
+                            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
+                                put(videoUrl, progress)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Sla op in Room Database
+            val offlineTrack = OfflineTrack(
+                videoUrl = videoUrl,
+                title = metadata.title,
+                artist = metadata.artist,
+                thumbnailUrl = metadata.thumbnailUrl,
+                localPath = outputFile.absolutePath,
+                durationSeconds = metadata.durationSeconds
+            )
+            offlineDao.insertTrack(offlineTrack)
+            
+            // Verwijder uit progress map na afronding
+            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
+                remove(videoUrl)
+            }
+            
+            Log.d(TAG, "Download completed: ${metadata.title}")
+            true
+        } catch (e: Exception) {
+            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
+                remove(videoUrl)
+            }
+            Log.e(TAG, "Download failed for $videoUrl", e)
+            false
+        }
+    }
+
     companion object {
-        // User-Agent die YouTube accepteert (recente desktop browser)
-        private const val USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/131.0.0.0 Safari/537.36"
+        private const val TAG = "AppDownloader"
 
         @Volatile
-        private var instance: AppDownloader? = null
+        private var INSTANCE: AppDownloader? = null
 
-        /**
-         * Geeft de singleton-instantie terug. Thread-safe.
-         */
-        fun getInstance(): AppDownloader {
-            return instance ?: synchronized(this) {
-                instance ?: AppDownloader().also { instance = it }
+        fun getInstance(context: Context): AppDownloader {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: AppDownloader(context.applicationContext).also { INSTANCE = it }
             }
         }
     }

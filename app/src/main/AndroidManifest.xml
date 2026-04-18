@@ -10,6 +10,8 @@
 
     <!-- Internet: vereist voor YouTube-data ophalen en audio streamen -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Foreground Service: vereist vanaf Android 9 voor achtergrondafspelen -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -17,12 +19,18 @@
     <!-- Foreground Service type mediaPlayback: verplicht vanaf Android 14 (API 34) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <!-- Shizuku: Vereist om de Shizuku Manager te kunnen aanspreken -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <!-- Car App: vereist voor de video-hack -->
     <uses-permission android:name="com.google.android.gms.permission.CAR_DISPLAY_CATEGORY_NAVIGATION" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
     <!-- Notificaties: runtime-permissie vereist vanaf Android 13 (API 33) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Boot: vereist om downloads te hervatten na herstart -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".YTAutoApp"
@@ -100,6 +108,16 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

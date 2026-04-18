@@ -40,6 +40,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/io.netty.versions.properties"
+        }
+    }
 }
 
 dependencies {
@@ -104,6 +111,12 @@ dependencies {
 
     // ── Guava (voor ListenableFuture in Media3 callbacks) ──
     implementation("com.google.guava:guava:33.3.1-android")
+
+    // ── Ktor (voor de Gast Casting Webserver) ──
+    val ktorVersion = "2.3.12"
+    implementation("io.ktor:ktor-server-core:$ktorVersion")
+    implementation("io.ktor:ktor-server-netty:$ktorVersion")
+    implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
 
     // ── Shizuku (voor diepe systeemtoegang zonder root) ──
     val shizukuVersion = "13.1.0"

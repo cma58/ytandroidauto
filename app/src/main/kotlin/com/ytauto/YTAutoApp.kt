@@ -22,7 +22,7 @@ class YTAutoApp : Application() {
 
         // Initialiseer NewPipe Extractor met onze OkHttp-gebaseerde Downloader.
         NewPipe.init(
-            com.ytauto.data.AppDownloader.getInstance(),
+            AppDownloader.getInstance(this),
             org.schabi.newpipe.extractor.localization.Localization.DEFAULT
         )
     }

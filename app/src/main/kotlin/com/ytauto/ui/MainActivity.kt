@@ -1,143 +1,88 @@
 package com.ytauto.ui
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.ui.PlayerView
 import androidx.palette.graphics.Palette
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import com.ytauto.data.SearchResult
+import com.ytauto.db.RecentTrack
 import com.ytauto.ui.theme.YTAutoTheme
 
 class MainActivity : ComponentActivity() {
-
     private val viewModel: MainViewModel by viewModels()
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        requestNotificationPermission()
-
+        handleIntent(intent)
         setContent {
             YTAutoTheme {
-                MediaControllerLifecycle(viewModel)
-                YTAutoScreen(viewModel)
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    MainScreen(viewModel)
+                }
             }
         }
     }
 
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (!sharedText.isNullOrBlank()) {
+                viewModel.handleSharedText(sharedText)
             }
         }
     }
 }
 
 @Composable
-private fun MediaControllerLifecycle(viewModel: MainViewModel) {
+fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -152,6 +97,8 @@ private fun MediaControllerLifecycle(viewModel: MainViewModel) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    YTAutoScreen(viewModel)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -167,8 +114,19 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
     val queue by viewModel.queue.collectAsState()
     val dominantColor by viewModel.dominantColor.collectAsState()
     val isVideoMode by viewModel.isVideoMode.collectAsState()
+    val downloadedTracks by viewModel.downloadedTracks.collectAsState()
+    val downloadedUrls by viewModel.downloadedUrls.collectAsState()
+    val recentTracks by viewModel.recentTracks.collectAsState()
+    val isShizukuAvailable by viewModel.isShizukuAvailable.collectAsState()
+    val hasShizukuPermission by viewModel.hasShizukuPermission.collectAsState()
+    val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val bassBoostStrength by viewModel.bassBoostStrength.collectAsState()
+    val loudnessGain by viewModel.loudnessGain.collectAsState()
+    val eqBands by viewModel.eqBands.collectAsState()
 
     var showFullScreenPlayer by remember { mutableStateOf(false) }
+    var currentTab by remember { mutableIntStateOf(0) } // 0 = Recent, 1 = Search, 2 = Downloads, 3 = Settings
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
 
@@ -191,13 +149,43 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (nowPlaying != null) {
-                NowPlayingBar(
-                    state = nowPlaying!!,
-                    isPlaying = isPlaying,
-                    onPlayPauseClick = { viewModel.togglePlayPause() },
-                    onClick = { showFullScreenPlayer = true }
-                )
+            Column {
+                if (nowPlaying != null) {
+                    NowPlayingBar(
+                        state = nowPlaying!!,
+                        isPlaying = isPlaying,
+                        isVideoMode = isVideoMode,
+                        onPlayPauseClick = { viewModel.togglePlayPause() },
+                        onVideoModeToggle = { viewModel.toggleVideoMode() },
+                        onClick = { showFullScreenPlayer = true }
+                    )
+                }
+                NavigationBar {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.History, null) },
+                        label = { Text("Recent") },
+                        selected = currentTab == 0,
+                        onClick = { currentTab = 0 }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Search, null) },
+                        label = { Text("Zoeken") },
+                        selected = currentTab == 1,
+                        onClick = { currentTab = 1 }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.LibraryMusic, null) },
+                        label = { Text("Bibliotheek") },
+                        selected = currentTab == 2,
+                        onClick = { currentTab = 2 }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.Settings, null) },
+                        label = { Text("Instellingen") },
+                        selected = currentTab == 3,
+                        onClick = { currentTab = 3 }
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -207,33 +195,91 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
                 .padding(innerPadding)
                 .windowInsetsPadding(WindowInsets.statusBars)
         ) {
+            val title = when (currentTab) {
+                0 -> "Recent Gespeeld"
+                1 -> "Zoeken"
+                2 -> "Bibliotheek"
+                else -> "Instellingen"
+            }
             Text(
-                text = "YT Auto",
+                text = title,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
             )
 
-            SearchBar(
-                query = query,
-                onQueryChanged = viewModel::onQueryChanged,
-                onSearch = viewModel::search,
-                isSearching = isSearching,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            if (isSearching) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(results, key = { it.videoUrl }) { result ->
-                        SearchResultItem(result = result, onClick = { viewModel.playItem(result) })
+            AnimatedContent(
+                targetState = currentTab,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                },
+                label = "TabTransition"
+            ) { targetTab ->
+                when (targetTab) {
+                    0 -> RecentTab(recentTracks, viewModel::playRecentTrack)
+                    1 -> {
+                        Column {
+                            SearchBar(
+                                query = query,
+                                onQueryChanged = viewModel::onQueryChanged,
+                                onSearch = viewModel::search,
+                                isSearching = isSearching,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                            if (isSearching) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                }
+                            } else {
+                                LazyColumn(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    items(results, key = { it.videoUrl }) { result ->
+                                        SearchResultItem(
+                                            result = result,
+                                            isDownloaded = downloadedUrls.contains(result.videoUrl),
+                                            downloadProgress = downloadProgress[result.videoUrl],
+                                            onClick = { viewModel.playItem(result) },
+                                            onDownloadClick = { viewModel.downloadTrack(context, result) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    2 -> {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(downloadedTracks, key = { it.videoUrl }) { track ->
+                                OfflineTrackItem(
+                                    track = track,
+                                    onClick = { viewModel.playOfflineTrack(track) }
+                                )
+                            }
+                        }
+                    }
+                    3 -> {
+                        SettingsScreen(
+                            isShizukuAvailable = isShizukuAvailable,
+                            hasShizukuPermission = hasShizukuPermission,
+                            onRequestShizukuPermission = viewModel::requestShizukuPermission,
+                            bassBoostStrength = bassBoostStrength,
+                            onBassBoostChange = viewModel::setBassBoost,
+                            loudnessGain = loudnessGain,
+                            onLoudnessChange = viewModel::setLoudness,
+                            eqBands = eqBands,
+                            onEqBandChange = viewModel::setEqBand,
+                            onApplyShizukuHacks = viewModel::applyShizukuHacks,
+                            onRefreshShizuku = viewModel::refreshShizuku,
+                            currentPreset = viewModel.currentPreset.collectAsState().value,
+                            presets = viewModel.presets.keys.toList(),
+                            onApplyPreset = viewModel::applyPreset,
+                            onClearAnalytics = { viewModel.clearAnalytics(context) }
+                        )
                     }
                 }
             }
@@ -271,6 +317,43 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
 }
 
 @Composable
+private fun RecentTab(tracks: List<RecentTrack>, onTrackClick: (RecentTrack) -> Unit) {
+    if (tracks.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Nog geen nummers afgespeeld", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(tracks, key = { it.videoUrl }) { track ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onTrackClick(track) }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current).data(track.thumbnailUrl).crossfade(true).build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(50.dp).clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(track.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SearchBar(query: String, onQueryChanged: (String) -> Unit, onSearch: () -> Unit, isSearching: Boolean, modifier: Modifier = Modifier) {
     TextField(
         value = query,
@@ -292,7 +375,7 @@ private fun SearchBar(query: String, onQueryChanged: (String) -> Unit, onSearch:
 }
 
 @Composable
-private fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
+private fun SearchResultItem(result: com.ytauto.data.SearchResult, isDownloaded: Boolean, downloadProgress: Float?, onClick: () -> Unit, onDownloadClick: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current).data(result.thumbnailUrl).crossfade(true).build(),
@@ -305,46 +388,94 @@ private fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
             Text(text = result.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(text = result.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-@Composable
-private fun NowPlayingBar(state: NowPlayingState, isPlaying: Boolean, onPlayPauseClick: () -> Unit, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = state.artworkUri.toString(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = state.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = state.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(contentAlignment = Alignment.Center) {
+            if (downloadProgress != null && !isDownloaded) {
+                CircularProgressIndicator(
+                    progress = { downloadProgress },
+                    modifier = Modifier.size(32.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
             }
-            IconButton(onClick = onPlayPauseClick, modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.primary, CircleShape)) {
-                Icon(imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+            IconButton(onClick = onDownloadClick) {
+                Icon(
+                    imageVector = if (isDownloaded) Icons.Default.CloudDone else Icons.Default.Download,
+                    contentDescription = null,
+                    tint = if (isDownloaded) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FullScreenPlayer(
-    state: NowPlayingState,
+private fun OfflineTrackItem(track: com.ytauto.db.OfflineTrack, onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        AsyncImage(
+            model = track.thumbnailUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(50.dp).clip(RoundedCornerShape(8.dp))
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(track.title, style = MaterialTheme.typography.bodyLarge)
+            Text(track.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingBar(
+    state: com.ytauto.ui.NowPlayingState,
     isPlaying: Boolean,
     isVideoMode: Boolean,
-    player: Player?,
+    onPlayPauseClick: () -> Unit,
+    onVideoModeToggle: () -> Unit,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(
+                model = state.artworkUri,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp))
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(state.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = onVideoModeToggle) {
+                Icon(
+                    imageVector = if (isVideoMode) Icons.Default.MusicNote else Icons.Default.Videocam,
+                    contentDescription = "Toggle Video",
+                    tint = if (isVideoMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onPlayPauseClick) {
+                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
+            }
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+fun FullScreenPlayer(
+    state: com.ytauto.ui.NowPlayingState,
+    isPlaying: Boolean,
+    isVideoMode: Boolean,
+    player: androidx.media3.common.Player?,
     currentPosition: Long,
     duration: Long,
-    queue: List<MediaItem>,
+    queue: List<androidx.media3.common.MediaItem>,
     dominantColor: Int?,
     onPlayPauseClick: () -> Unit,
     onVideoModeToggle: () -> Unit,
@@ -354,125 +485,168 @@ private fun FullScreenPlayer(
     onQueueItemClick: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val backgroundColor by animateColorAsState(
-        targetValue = dominantColor?.let { Color(it) } ?: MaterialTheme.colorScheme.surface,
-        animationSpec = tween(1000)
-    )
-
-    Box(modifier = Modifier.fillMaxSize().drawBehind {
-        drawRect(Brush.verticalGradient(colors = listOf(backgroundColor.copy(alpha = 0.9f), Color.Black)))
-    }) {
-        // Dynamic Glow Background
-        Box(modifier = Modifier.fillMaxSize().blur(100.dp).drawBehind {
-            drawCircle(color = backgroundColor.copy(alpha = 0.4f), radius = size.minDimension, center = Offset(size.width / 2, size.height / 3))
-        })
-
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp).navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-            // Header
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = null, tint = Color.White) }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("AUDIO", style = MaterialTheme.typography.labelMedium, color = if (!isVideoMode) Color.White else Color.White.copy(0.4f))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Switch(checked = isVideoMode, onCheckedChange = { onVideoModeToggle() }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = backgroundColor.copy(alpha = 0.8f)))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("VIDEO", style = MaterialTheme.typography.labelMedium, color = if (isVideoMode) Color.White else Color.White.copy(0.4f))
-                }
-                IconButton(onClick = {}) { Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.White.copy(0.7f)) }
-            }
-
-            LazyColumn(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(bottom = 32.dp)) {
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Card(modifier = Modifier.fillMaxWidth().aspectRatio(1f), shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 24.dp)) {
-                        if (isVideoMode && player != null) {
-                            AndroidView(factory = { context -> PlayerView(context).apply { this.player = player; useController = false; resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT; setBackgroundColor(android.graphics.Color.BLACK) } }, modifier = Modifier.fillMaxSize())
-                        } else {
-                            AsyncImage(model = state.artworkUri.toString(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(text = state.title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = Color.White, shadow = Shadow(blurRadius = 12f, color = Color.Black.copy(alpha = 0.6f))), maxLines = 1, modifier = Modifier.basicMarquee())
-                        Text(text = state.artist, style = MaterialTheme.typography.titleLarge, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-                    GlowSlider(currentPosition = currentPosition, duration = duration, accentColor = backgroundColor, onSeek = onSeek)
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onSkipPrevious, modifier = Modifier.size(64.dp)) { Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp)) }
-                        IconButton(onClick = onPlayPauseClick, modifier = Modifier.size(88.dp).background(Color.White, CircleShape)) { Icon(imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(56.dp), tint = Color.Black) }
-                        IconButton(onClick = onSkipNext, modifier = Modifier.size(64.dp)) { Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp)) }
-                    }
-                    Spacer(modifier = Modifier.height(40.dp))
-                    if (queue.isNotEmpty()) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(text = "UP NEXT", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
-                            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        }
-                    }
-                }
-                itemsIndexed(queue) { index, item ->
-                    QueueItem(item, onClick = { onQueueItemClick(index) })
+    Box(modifier = Modifier.fillMaxSize().background(
+        Brush.verticalGradient(listOf(Color(dominantColor ?: Color.Black.toArgb()), Color.Black))
+    )) {
+        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White) }
+                IconButton(onClick = onVideoModeToggle) { 
+                    Icon(if (isVideoMode) Icons.Default.MusicNote else Icons.Default.Videocam, null, tint = Color.White)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun GlowSlider(currentPosition: Long, duration: Long, accentColor: Color, onSeek: (Long) -> Unit) {
-    var isDragging by remember { mutableStateOf(false) }
-    var dragPosition by remember { mutableStateOf(0f) }
-
-    // Animeer alleen wanneer de gebruiker NIET sleept — anders rubber-banding
-    val animatedPosition by animateFloatAsState(
-        targetValue = if (isDragging) dragPosition else currentPosition.toFloat(),
-        animationSpec = if (isDragging) tween(0) else tween(500),
-        label = "sliderPosition"
-    )
-    val displayPosition = if (isDragging) dragPosition else animatedPosition
-
-    Column {
-        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-            Box(modifier = Modifier.fillMaxWidth(0.95f).height(4.dp).blur(8.dp).background(accentColor.copy(alpha = 0.3f), RoundedCornerShape(2.dp)))
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            if (isVideoMode && player != null) {
+                AndroidView(
+                    factory = { context ->
+                        PlayerView(context).apply {
+                            this.player = player
+                            useController = false
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                    },
+                    update = { view ->
+                        view.player = player
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.Black)
+                )
+            } else {
+                AsyncImage(
+                    model = state.artworkUri,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(state.title, style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(state.artist, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f))
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
             Slider(
-                value = displayPosition,
-                onValueChange = { pos ->
-                    isDragging = true
-                    dragPosition = pos
-                },
-                onValueChangeFinished = {
-                    onSeek(dragPosition.toLong())
-                    isDragging = false
-                },
-                valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
-                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.2f)),
-                modifier = Modifier.fillMaxWidth()
+                value = currentPosition.toFloat(),
+                onValueChange = { onSeek(it.toLong()) },
+                valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
+                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White)
             )
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = formatTime(if (isDragging) dragPosition.toLong() else currentPosition), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
-            Text(text = formatTime(duration), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
-        }
-    }
-}
-
-@Composable
-private fun QueueItem(item: MediaItem, onClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(model = item.mediaMetadata.artworkUri.toString(), contentDescription = null, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = item.mediaMetadata.title?.toString() ?: "", style = MaterialTheme.typography.bodyMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = item.mediaMetadata.artist?.toString() ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f), maxLines = 1)
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(formatTime(currentPosition), color = Color.White.copy(alpha = 0.5f))
+                Text(formatTime(duration), color = Color.White.copy(alpha = 0.5f))
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onSkipPrevious) { Icon(Icons.Default.SkipPrevious, null, modifier = Modifier.size(48.dp), tint = Color.White) }
+                Spacer(modifier = Modifier.width(32.dp))
+                FloatingActionButton(onClick = onPlayPauseClick, shape = CircleShape, containerColor = Color.White) {
+                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Color.Black)
+                }
+                Spacer(modifier = Modifier.width(32.dp))
+                IconButton(onClick = onSkipNext) { Icon(Icons.Default.SkipNext, null, modifier = Modifier.size(48.dp), tint = Color.White) }
+            }
+            
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
 
 private fun formatTime(ms: Long): String {
-    val totalSeconds = ms / 1000
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return String.format("%d:%02d", minutes, seconds)
+    val sec = (ms / 1000) % 60
+    val min = (ms / (1000 * 60)) % 60
+    return "%d:%02d".format(min, sec)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    isShizukuAvailable: Boolean,
+    hasShizukuPermission: Boolean,
+    onRequestShizukuPermission: () -> Unit,
+    bassBoostStrength: Int,
+    onBassBoostChange: (Int) -> Unit,
+    loudnessGain: Int,
+    onLoudnessChange: (Int) -> Unit,
+    eqBands: List<Int>,
+    onEqBandChange: (Int, Int) -> Unit,
+    onApplyShizukuHacks: () -> Unit,
+    onRefreshShizuku: () -> Unit,
+    currentPreset: String,
+    presets: List<String>,
+    onApplyPreset: (String) -> Unit,
+    onClearAnalytics: () -> Unit
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text("Audio Tuning", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text("Presets")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                presets.forEach { preset ->
+                    FilterChip(
+                        selected = currentPreset == preset,
+                        onClick = { onApplyPreset(preset) },
+                        label = { Text(preset) }
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Bass Boost: $bassBoostStrength")
+            Slider(value = bassBoostStrength.toFloat(), onValueChange = { onBassBoostChange(it.toInt()) }, valueRange = 0f..1000f)
+            
+            Text("Loudness Enhancer: $loudnessGain")
+            Slider(value = loudnessGain.toFloat(), onValueChange = { onLoudnessChange(it.toInt()) }, valueRange = 0f..1000f)
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("5-Band Equalizer")
+            eqBands.forEachIndexed { index, level ->
+                Text("Band $index: $level dB")
+                Slider(value = level.toFloat(), onValueChange = { onEqBandChange(index, it.toInt()) }, valueRange = -1500f..1500f)
+            }
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
+            
+            Text("Privacy & Analytics", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onClearAnalytics,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Wis Afspeelgeschiedenis (Analytics)")
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
+            
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Systeem Hacks (Shizuku)", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                IconButton(onClick = onRefreshShizuku) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Shizuku")
+                }
+            }
+            if (!isShizukuAvailable) {
+                Text("Shizuku is niet geïnstalleerd.", color = MaterialTheme.colorScheme.error)
+            } else if (!hasShizukuPermission) {
+                Button(onClick = onRequestShizukuPermission) { Text("Geef Shizuku Toestemming") }
+            } else {
+                Button(onClick = onApplyShizukuHacks) { Text("Deactiveer Rij-restricties (ADB)") }
+            }
+        }
+    }
 }

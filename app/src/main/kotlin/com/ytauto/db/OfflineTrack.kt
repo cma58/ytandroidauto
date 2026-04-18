@@ -14,5 +14,7 @@ data class OfflineTrack(
     val thumbnailUrl: String?,
     val localPath: String,
     val durationSeconds: Long,
-    val downloadedAt: Long = System.currentTimeMillis()
+    val downloadedAt: Long = System.currentTimeMillis(),
+    val isFavorite: Boolean = false,
+    val playCount: Int = 0
 )
