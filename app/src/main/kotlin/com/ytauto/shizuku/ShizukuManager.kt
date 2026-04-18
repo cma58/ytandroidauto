@@ -44,42 +44,95 @@ object ShizukuManager {
     }
 
     fun checkAvailability() {
-        val available = Shizuku.pingBinder()
-        _isAvailable.value = available
-        if (available) {
-            _hasPermission.value = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        try {
+            val available = Shizuku.pingBinder()
+            _isAvailable.value = available
+            if (available) {
+                _hasPermission.value = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            } else {
+                _hasPermission.value = false
+            }
+            Log.d(TAG, "Shizuku state check - Available: $available, HasPermission: ${_hasPermission.value}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking Shizuku availability", e)
+            _isAvailable.value = false
+            _hasPermission.value = false
         }
-        Log.d(TAG, "Shizuku available: $available, permission: ${_hasPermission.value}")
+    }
+
+    fun isShizukuInstalled(context: Context): Boolean {
+        return try {
+            context.packageManager.getPackageInfo("moe.shizuku.manager", 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
     }
 
     fun requestPermission() {
+        if (!isAvailable.value) {
+            Log.e(TAG, "Cannot request permission: Shizuku is not running")
+            return
+        }
+        
         if (Shizuku.isPreV11()) {
-            // Voor oude versies van Shizuku
             Log.w(TAG, "Shizuku version is too old")
             return
         }
+        
         try {
+            Log.d(TAG, "Requesting Shizuku permission...")
             Shizuku.requestPermission(REQUEST_CODE)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to request Shizuku permission", e)
         }
     }
 
+    // Shizuku.newProcess is @hide in de publieke API — via reflectie benaderen.
+    private val newProcessMethod by lazy {
+        Shizuku::class.java.getDeclaredMethod(
+            "newProcess",
+            Array<String>::class.java,
+            Array<String>::class.java,
+            String::class.java
+        ).apply { isAccessible = true }
+    }
+
+    private fun newProcess(cmd: Array<String>, env: Array<String>? = null, dir: String? = null): Process {
+        return newProcessMethod.invoke(null, cmd, env, dir) as Process
+    }
+
     fun runCommand(command: String): String {
-        if (!hasPermission.value) return "No permission"
+        if (!_isAvailable.value) return "Error: Shizuku not running"
+        if (!_hasPermission.value) return "Error: No Shizuku permission"
+
+        Log.d(TAG, "Running command: $command")
         return try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
+            val process = newProcess(arrayOf("sh", "-c", command), null, null)
             val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val errorReader = BufferedReader(InputStreamReader(process.errorStream))
             val output = StringBuilder()
+            
             var line: String?
             while (reader.readLine().also { line = it } != null) {
                 output.append(line).append("\n")
             }
-            process.waitFor()
-            output.toString()
+            
+            val errors = StringBuilder()
+            while (errorReader.readLine().also { line = it } != null) {
+                errors.append(line).append("\n")
+            }
+            
+            val exitCode = process.waitFor()
+            if (exitCode != 0) {
+                Log.e(TAG, "Command failed with exit code $exitCode. Errors: $errors")
+                "Error (Exit $exitCode): $errors".trim()
+            } else {
+                output.toString().trim()
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Command failed: $command", e)
-            "Error: ${e.message}"
+            Log.e(TAG, "Exception running command: $command", e)
+            "Exception: ${e.message}"
         }
     }
 
