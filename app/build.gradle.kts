@@ -119,7 +119,7 @@ dependencies {
     implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
 
     // ── Shizuku (voor diepe systeemtoegang zonder root) ──
-    val shizukuVersion = "13.1.0"
+    val shizukuVersion = "13.1.5"
     implementation("dev.rikka.shizuku:api:$shizukuVersion")
     implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 }
