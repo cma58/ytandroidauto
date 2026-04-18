@@ -58,6 +58,7 @@ class PlaybackService : MediaLibraryService() {
     private var bassBoost: BassBoost? = null
     
     private var isCrossfading = false
+    private var currentSkipSegments: List<Pair<Long, Long>> = emptyList()
     private var positionTrackingJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val CROSSFADE_DURATION_MS = 3000L
@@ -95,7 +96,22 @@ class PlaybackService : MediaLibraryService() {
 
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                fadeIn()
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
+                    fadeIn()
+                }
+
+                // --- NIEUW: SPONSORBLOCK FETCH ---
+                serviceScope.launch {
+                    val videoId = mediaItem?.mediaId
+                    if (videoId != null && !videoId.startsWith("file://") && !videoId.startsWith("/")) {
+                        currentSkipSegments = com.ytauto.data.SponsorBlockClient.getSkipSegments(videoId)
+                    } else {
+                        currentSkipSegments = emptyList()
+                    }
+                }
+                // ---------------------------------
+
                 mediaItem?.let { item ->
                     serviceScope.launch {
                         val db = AppDatabase.getDatabase(this@PlaybackService)
@@ -206,7 +222,17 @@ class PlaybackService : MediaLibraryService() {
         positionTrackingJob = serviceScope.launch {
             while (isActive) {
                 if (player.isPlaying && player.duration > 0) {
-                    val remaining = player.duration - player.currentPosition
+                    val pos = player.currentPosition
+                    
+                    // --- NIEUW: SPONSORBLOCK SKIP ---
+                    currentSkipSegments.forEach { segment ->
+                        if (pos >= segment.first && pos < segment.second) {
+                            player.seekTo(segment.second)
+                        }
+                    }
+                    // --------------------------------
+
+                    val remaining = player.duration - pos
                     if (remaining in 1..CROSSFADE_DURATION_MS && !isCrossfading && player.hasNextMediaItem()) {
                         fadeOutAndNext()
                     }
@@ -467,6 +493,13 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, C.TIME_UNSET))
         }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "ACTION_AUTO_PLAY") {
+            player.play()
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     private fun buildBrowsableItem(id: String, title: String, subtitle: String): MediaItem {

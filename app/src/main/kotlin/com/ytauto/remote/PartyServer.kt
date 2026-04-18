@@ -6,9 +6,34 @@ import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.http.*
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.regex.Pattern
 
 class PartyServer(private val onLinkReceived: (String) -> Unit) {
     private var server: NettyApplicationEngine? = null
+    private val okHttpClient = OkHttpClient()
+
+    private fun processGuestLink(query: String): String {
+        if (query.contains("spotify.com/track/")) {
+            try {
+                val request = Request.Builder().url(query).build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    val html = response.body?.string() ?: ""
+                    val titleMatch = Regex("<title>(.*?)</title>").find(html)
+                    val extractedTitle = titleMatch?.groupValues?.get(1) ?: ""
+                    
+                    return extractedTitle
+                        .replace("| Spotify", "")
+                        .replace("song and lyrics by", "")
+                        .trim()
+                }
+            } catch (e: Exception) {
+                // Fallback
+            }
+        }
+        return query
+    }
 
     fun start() {
         server = embeddedServer(Netty, port = 8080) {
@@ -33,8 +58,9 @@ class PartyServer(private val onLinkReceived: (String) -> Unit) {
                 get("/add") {
                     val url = call.parameters["url"]
                     if (!url.isNullOrBlank()) {
-                        onLinkReceived(url)
-                        call.respondText("Track toegevoegd! Veel plezier.")
+                        val processed = processGuestLink(url)
+                        onLinkReceived(processed)
+                        call.respondText("Track toegevoegd ($processed)! Veel plezier.")
                     } else {
                         call.respondText("Geen geldige URL ontvangen.")
                     }

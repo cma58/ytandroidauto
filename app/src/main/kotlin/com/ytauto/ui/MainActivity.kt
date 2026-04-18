@@ -1,10 +1,14 @@
 package com.ytauto.ui
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import com.ytauto.shizuku.ShizukuManager
+import rikka.shizuku.Shizuku
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -54,6 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
+        initShizuku()   // Stap 2: Permissie claimen bij het opstarten
         setContent {
             YTAutoTheme {
                 Surface(
@@ -77,6 +82,29 @@ class MainActivity : ComponentActivity() {
             if (!sharedText.isNullOrBlank()) {
                 viewModel.handleSharedText(sharedText)
             }
+        }
+    }
+
+    /**
+     * Stap 2: De permissie officieel "claimen" zodra de app opstart.
+     * Stap 1 (binder listener) zit al in ShizukuManager.init() via YTAutoApp.
+     */
+    private fun initShizuku() {
+        try {
+            if (Shizuku.pingBinder()) {
+                Log.d("Shizuku", "Binder actief bij opstarten")
+                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+                    Log.d("Shizuku", "Permissie ontbreekt — vragen via ShizukuManager")
+                    ShizukuManager.requestPermission()
+                } else {
+                    Log.d("Shizuku", "Permissie is al verleend!")
+                    ShizukuManager.checkAvailability()   // StateFlow bijwerken
+                }
+            } else {
+                Log.w("Shizuku", "Shizuku draait niet — open de Shizuku-app")
+            }
+        } catch (e: Exception) {
+            Log.e("Shizuku", "Fout bij Shizuku initialisatie: ${e.message}")
         }
     }
 }
@@ -264,21 +292,8 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
                     }
                     3 -> {
                         SettingsScreen(
-                            isShizukuAvailable = isShizukuAvailable,
-                            hasShizukuPermission = hasShizukuPermission,
-                            onRequestShizukuPermission = viewModel::requestShizukuPermission,
-                            bassBoostStrength = bassBoostStrength,
-                            onBassBoostChange = viewModel::setBassBoost,
-                            loudnessGain = loudnessGain,
-                            onLoudnessChange = viewModel::setLoudness,
-                            eqBands = eqBands,
-                            onEqBandChange = viewModel::setEqBand,
-                            onApplyShizukuHacks = viewModel::applyShizukuHacks,
-                            onRefreshShizuku = viewModel::refreshShizuku,
-                            currentPreset = viewModel.currentPreset.collectAsState().value,
-                            presets = viewModel.presets.keys.toList(),
-                            onApplyPreset = viewModel::applyPreset,
-                            onClearAnalytics = { viewModel.clearAnalytics(context) }
+                            onBackClick = { currentTab = 0 },
+                            viewModel = viewModel
                         )
                     }
                 }
@@ -570,83 +585,4 @@ private fun formatTime(ms: Long): String {
     return "%d:%02d".format(min, sec)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsScreen(
-    isShizukuAvailable: Boolean,
-    hasShizukuPermission: Boolean,
-    onRequestShizukuPermission: () -> Unit,
-    bassBoostStrength: Int,
-    onBassBoostChange: (Int) -> Unit,
-    loudnessGain: Int,
-    onLoudnessChange: (Int) -> Unit,
-    eqBands: List<Int>,
-    onEqBandChange: (Int, Int) -> Unit,
-    onApplyShizukuHacks: () -> Unit,
-    onRefreshShizuku: () -> Unit,
-    currentPreset: String,
-    presets: List<String>,
-    onApplyPreset: (String) -> Unit,
-    onClearAnalytics: () -> Unit
-) {
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item {
-            Text("Audio Tuning", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text("Presets")
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                presets.forEach { preset ->
-                    FilterChip(
-                        selected = currentPreset == preset,
-                        onClick = { onApplyPreset(preset) },
-                        label = { Text(preset) }
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Bass Boost: $bassBoostStrength")
-            Slider(value = bassBoostStrength.toFloat(), onValueChange = { onBassBoostChange(it.toInt()) }, valueRange = 0f..1000f)
-            
-            Text("Loudness Enhancer: $loudnessGain")
-            Slider(value = loudnessGain.toFloat(), onValueChange = { onLoudnessChange(it.toInt()) }, valueRange = 0f..1000f)
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("5-Band Equalizer")
-            eqBands.forEachIndexed { index, level ->
-                Text("Band $index: $level dB")
-                Slider(value = level.toFloat(), onValueChange = { onEqBandChange(index, it.toInt()) }, valueRange = -1500f..1500f)
-            }
-            
-            HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
-            
-            Text("Privacy & Analytics", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = onClearAnalytics,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Wis Afspeelgeschiedenis (Analytics)")
-            }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Systeem Hacks (Shizuku)", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                IconButton(onClick = onRefreshShizuku) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Shizuku")
-                }
-            }
-            if (!isShizukuAvailable) {
-                Text("Shizuku is niet geïnstalleerd.", color = MaterialTheme.colorScheme.error)
-            } else if (!hasShizukuPermission) {
-                Button(onClick = onRequestShizukuPermission) { Text("Geef Shizuku Toestemming") }
-            } else {
-                Button(onClick = onApplyShizukuHacks) { Text("Deactiveer Rij-restricties (ADB)") }
-            }
-        }
-    }
-}

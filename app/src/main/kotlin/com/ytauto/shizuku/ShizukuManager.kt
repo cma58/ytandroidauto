@@ -98,6 +98,31 @@ object ShizukuManager {
             val result = runCommand(cmd)
             Log.d(TAG, "Executed '$cmd': $result")
         }
+        forceAndroidAutoWhitelist()
+    }
+
+    /**
+     * De Ultimate Hack: Voegt de app geforceerd toe aan de interne whitelist van Android Auto
+     * via de Google Play Services phenotype database.
+     */
+    fun forceAndroidAutoWhitelist() {
+        if (!isAvailable.value || !hasPermission.value) return
+
+        val packageName = "com.ytauto"
+        
+        // Het SQLite commando om de verborgen database van Google Play Services te beïnvloeden
+        val command = "sqlite3 /data/data/com.google.android.gms/databases/phenotype.db " +
+                "\"UPDATE FlagOverrides SET stringVal = stringVal || ',$packageName' " +
+                "WHERE name='app_whitelist' AND packageName='com.google.android.projection.gearhead';\""
+
+        try {
+            runCommand(command)
+            // Force-stop Android Auto zodat hij de gehackte lijst opnieuw inlaadt
+            runCommand("am force-stop com.google.android.projection.gearhead")
+            Log.d(TAG, "Android Auto whitelist hack attempted and AA force-stopped")
+        } catch (e: Exception) {
+            Log.e(TAG, "Whitelist hack failed", e)
+        }
     }
 
     fun destroy() {
