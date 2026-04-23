@@ -45,6 +45,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.common.Player
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -129,10 +130,13 @@ fun MainScreen(viewModel: MainViewModel) {
     YTAutoScreen(viewModel)
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun YTAutoScreen(viewModel: MainViewModel) {
     val query by viewModel.searchQuery.collectAsState()
+    val forYouTracks by viewModel.forYouTracks.collectAsState()
+    val playbackSpeed by viewModel.playbackSpeed.collectAsState()
     val results by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val nowPlaying by viewModel.nowPlaying.collectAsState()
@@ -151,6 +155,8 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
     val bassBoostStrength by viewModel.bassBoostStrength.collectAsState()
     val loudnessGain by viewModel.loudnessGain.collectAsState()
     val eqBands by viewModel.eqBands.collectAsState()
+
+    val selectedGenre by viewModel.selectedGenre.collectAsState()
 
     var showFullScreenPlayer by remember { mutableStateOf(false) }
     var currentTab by remember { mutableIntStateOf(0) } // 0 = Recent, 1 = Search, 2 = Downloads, 3 = Settings
@@ -196,6 +202,12 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
                         onClick = { currentTab = 0 }
                     )
                     NavigationBarItem(
+                        icon = { Icon(Icons.Default.Favorite, null) },
+                        label = { Text("Voor jou") },
+                        selected = currentTab == 4,
+                        onClick = { currentTab = 4 }
+                    )
+                    NavigationBarItem(
                         icon = { Icon(Icons.Default.Search, null) },
                         label = { Text("Zoeken") },
                         selected = currentTab == 1,
@@ -227,6 +239,7 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
                 0 -> "Recent Gespeeld"
                 1 -> "Zoeken"
                 2 -> "Bibliotheek"
+                4 -> "Speciaal voor jou"
                 else -> "Instellingen"
             }
             Text(
@@ -296,6 +309,28 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
                             viewModel = viewModel
                         )
                     }
+                    4 -> {
+                        Column {
+                            GenreFilterChips(
+                                selectedGenre = selectedGenre,
+                                onGenreSelected = { viewModel.setGenre(it) }
+                            )
+                            LazyColumn(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(forYouTracks, key = { it.videoUrl }) { result ->
+                                    SearchResultItem(
+                                        result = result,
+                                        isDownloaded = downloadedUrls.contains(result.videoUrl),
+                                        downloadProgress = downloadProgress[result.videoUrl],
+                                        onClick = { viewModel.playItem(result) },
+                                        onDownloadClick = { viewModel.downloadTrack(context, result) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -325,7 +360,13 @@ private fun YTAutoScreen(viewModel: MainViewModel) {
                 onSkipNext = { viewModel.skipNext() },
                 onSkipPrevious = { viewModel.skipPrevious() },
                 onQueueItemClick = { viewModel.skipToQueueItem(it) },
-                onDismiss = { showFullScreenPlayer = false }
+                onShuffleToggle = { viewModel.toggleShuffle() },
+                onRepeatToggle = { viewModel.toggleRepeat() },
+                onSpeedChange = { viewModel.setPlaybackSpeed(it) },
+                onTimerClick = { viewModel.setSleepTimer(it) },
+                onFavoriteClick = { viewModel.toggleFavorite() },
+                onDismiss = { showFullScreenPlayer = false },
+                playbackSpeed = playbackSpeed
             )
         }
     }
@@ -481,6 +522,8 @@ private fun NowPlayingBar(
     }
 }
 
+@UnstableApi
+@androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(UnstableApi::class)
 @Composable
 fun FullScreenPlayer(
@@ -492,14 +535,22 @@ fun FullScreenPlayer(
     duration: Long,
     queue: List<androidx.media3.common.MediaItem>,
     dominantColor: Int?,
+    playbackSpeed: Float,
     onPlayPauseClick: () -> Unit,
     onVideoModeToggle: () -> Unit,
     onSeek: (Long) -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
     onQueueItemClick: (Int) -> Unit,
+    onShuffleToggle: () -> Unit,
+    onRepeatToggle: () -> Unit,
+    onSpeedChange: (Float) -> Unit,
+    onTimerClick: (Int) -> Unit,
+    onFavoriteClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showTimerDialog by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxSize().background(
         Brush.verticalGradient(listOf(Color(dominantColor ?: Color.Black.toArgb()), Color.Black))
     )) {
@@ -565,16 +616,105 @@ fun FullScreenPlayer(
             Spacer(modifier = Modifier.height(24.dp))
             
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onShuffleToggle) { Icon(Icons.Default.Shuffle, null, tint = if (player?.shuffleModeEnabled == true) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)) }
+                Spacer(modifier = Modifier.width(16.dp))
                 IconButton(onClick = onSkipPrevious) { Icon(Icons.Default.SkipPrevious, null, modifier = Modifier.size(48.dp), tint = Color.White) }
-                Spacer(modifier = Modifier.width(32.dp))
+                Spacer(modifier = Modifier.width(24.dp))
                 FloatingActionButton(onClick = onPlayPauseClick, shape = CircleShape, containerColor = Color.White) {
-                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Color.Black)
+                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(36.dp))
                 }
-                Spacer(modifier = Modifier.width(32.dp))
+                Spacer(modifier = Modifier.width(24.dp))
                 IconButton(onClick = onSkipNext) { Icon(Icons.Default.SkipNext, null, modifier = Modifier.size(48.dp), tint = Color.White) }
+                Spacer(modifier = Modifier.width(16.dp))
+                IconButton(onClick = onRepeatToggle) { Icon(Icons.Default.Repeat, null, tint = if (player?.repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)) }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                IconButton(onClick = { showSpeedDialog = true }) { 
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Speed, null, tint = Color.White)
+                        Text("${playbackSpeed}x", style = MaterialTheme.typography.labelSmall, color = Color.White)
+                    }
+                }
+                IconButton(onClick = { showTimerDialog = true }) { 
+                    Icon(Icons.Default.Timer, null, tint = Color.White)
+                }
+                IconButton(onClick = onFavoriteClick) { 
+                    Icon(Icons.Default.Favorite, null, tint = Color.White)
+                }
+                IconButton(onClick = { /* Show Queue */ }) { 
+                    Icon(Icons.Default.QueueMusic, null, tint = Color.White)
+                }
+            }
+
+            if (showSpeedDialog) {
+                AlertDialog(
+                    onDismissRequest = { showSpeedDialog = false },
+                    title = { Text("Afspeelsnelheid") },
+                    text = {
+                        Column {
+                            listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { speed ->
+                                TextButton(
+                                    onClick = { 
+                                        onSpeedChange(speed)
+                                        showSpeedDialog = false 
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("${speed}x", color = if (playbackSpeed == speed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showSpeedDialog = false }) { Text("Sluiten") } }
+                )
+            }
+
+            if (showTimerDialog) {
+                AlertDialog(
+                    onDismissRequest = { showTimerDialog = false },
+                    title = { Text("Sleep Timer") },
+                    text = {
+                        Column {
+                            listOf(5, 15, 30, 60).forEach { minutes ->
+                                TextButton(
+                                    onClick = { 
+                                        onTimerClick(minutes)
+                                        showTimerDialog = false 
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("$minutes minuten")
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showTimerDialog = false }) { Text("Annuleren") } }
+                )
             }
             
             Spacer(modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun GenreFilterChips(selectedGenre: String, onGenreSelected: (String) -> Unit) {
+    val genres = listOf("Alles", "Oujda", "Franse Rap", "Ontdekking")
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        genres.forEach { genre ->
+            FilterChip(
+                selected = selectedGenre == genre,
+                onClick = { onGenreSelected(genre) },
+                label = { Text(genre) }
+            )
         }
     }
 }

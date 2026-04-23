@@ -15,19 +15,19 @@ interface OfflineTrackDao {
     suspend fun getTrackByUrl(videoUrl: String): OfflineTrack?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTrack(track: OfflineTrack)
+    suspend fun insertTrack(track: OfflineTrack): Long
 
     @Delete
-    suspend fun deleteTrack(track: OfflineTrack)
+    suspend fun deleteTrack(track: OfflineTrack): Int
 
     @Query("SELECT * FROM offline_tracks ORDER BY RANDOM() LIMIT 20")
     suspend fun getRandomTracks(): List<OfflineTrack>
 
     @Query("UPDATE offline_tracks SET isFavorite = :favorite WHERE videoUrl = :videoUrl")
-    suspend fun setFavorite(videoUrl: String, favorite: Boolean)
+    suspend fun setFavorite(videoUrl: String, favorite: Boolean): Int
 
     @Query("UPDATE offline_tracks SET playCount = playCount + 1 WHERE videoUrl = :videoUrl")
-    suspend fun incrementPlayCount(videoUrl: String)
+    suspend fun incrementPlayCount(videoUrl: String): Int
 
     @Query("SELECT * FROM offline_tracks WHERE playCount > 0 ORDER BY playCount DESC LIMIT 10")
     suspend fun getTopPlayedTracks(): List<OfflineTrack>

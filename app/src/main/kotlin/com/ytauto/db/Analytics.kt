@@ -14,7 +14,7 @@ data class PlayEvent(
 @Dao
 interface PlayEventDao {
     @Insert
-    suspend fun insertEvent(event: PlayEvent)
+    suspend fun insertEvent(event: PlayEvent): Long
 
     @Query("SELECT artist, COUNT(*) as count FROM play_events WHERE artist IS NOT NULL GROUP BY artist ORDER BY count DESC LIMIT 5")
     suspend fun getTopArtists(): List<ArtistCount>
@@ -23,7 +23,10 @@ interface PlayEventDao {
     suspend fun getTopTitles(): List<String>
 
     @Query("DELETE FROM play_events")
-    suspend fun clearAnalytics()
+    suspend fun clearAnalytics(): Int
 }
 
-data class ArtistCount(val artist: String, val count: Int)
+data class ArtistCount(
+    @ColumnInfo(name = "artist") val artist: String?,
+    @ColumnInfo(name = "count") val count: Long
+)

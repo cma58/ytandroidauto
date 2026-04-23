@@ -15,6 +15,7 @@ import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
@@ -44,6 +45,12 @@ class VideoPlayerScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) { invalidate() }
+        override fun onMediaMetadataChanged(mediaMetadata: androidx.media3.common.MediaMetadata) { invalidate() }
+        override fun onPlaybackStateChanged(state: Int) { invalidate() }
+    }
+
     init {
         val sessionToken = SessionToken(carContext, ComponentName(carContext, PlaybackService::class.java))
         controllerFuture = MediaController.Builder(carContext, sessionToken).buildAsync()
@@ -51,14 +58,15 @@ class VideoPlayerScreen(carContext: CarContext) : Screen(carContext) {
             try {
                 val mediaController = controllerFuture?.get()
                 controller = mediaController
-                
+                mediaController?.addListener(playerListener)
+
                 // Activeer Video Mode in de service
                 val args = Bundle().apply { putBoolean(PlaybackService.EXTRA_VIDEO_MODE, true) }
                 mediaController?.sendCustomCommand(
                     SessionCommand(PlaybackService.ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY),
                     args
                 )
-                
+
                 invalidate()
                 Log.d("VideoPlayerScreen", "Connected and Video Mode requested")
             } catch (e: Exception) {
@@ -89,6 +97,47 @@ class VideoPlayerScreen(carContext: CarContext) : Screen(carContext) {
         val title = controller?.currentMediaItem?.mediaMetadata?.title ?: "YouTube Video Mode"
         val artist = controller?.currentMediaItem?.mediaMetadata?.artist ?: "Selecteer een nummer"
 
+        val isPlaying = controller?.isPlaying == true
+        val playPauseAction = Action.Builder()
+            .setTitle(if (isPlaying) "Pauze" else "Play")
+            .setOnClickListener {
+                controller?.let { c ->
+                    if (c.isPlaying) c.pause() else c.play()
+                }
+                invalidate()
+            }
+            .build()
+
+        val nextAction = Action.Builder()
+            .setTitle("Volgende")
+            .setOnClickListener {
+                controller?.seekToNext()
+                invalidate()
+            }
+            .build()
+
+        val closeAction = Action.Builder()
+            .setTitle("Sluit Video")
+            .setOnClickListener { screenManager.pop() }
+            .build()
+
+        val speedAction = Action.Builder()
+            .setTitle("${controller?.playbackParameters?.speed ?: 1.0}x")
+            .setOnClickListener {
+                controller?.let { c ->
+                    val currentSpeed = c.playbackParameters.speed
+                    val nextSpeed = when {
+                        currentSpeed < 1.0f -> 1.0f
+                        currentSpeed < 1.5f -> 1.5f
+                        currentSpeed < 2.0f -> 2.0f
+                        else -> 0.75f
+                    }
+                    c.setPlaybackSpeed(nextSpeed)
+                }
+                invalidate()
+            }
+            .build()
+
         return NavigationTemplate.Builder()
             .setNavigationInfo(
                 MessageInfo.Builder(title)
@@ -97,15 +146,13 @@ class VideoPlayerScreen(carContext: CarContext) : Screen(carContext) {
             )
             .setActionStrip(
                 ActionStrip.Builder()
-                    .addAction(
-                        Action.Builder()
-                            .setTitle("Sluit Video")
-                            .setOnClickListener { screenManager.pop() }
-                            .build()
-                    )
+                    .addAction(playPauseAction)
+                    .addAction(nextAction)
+                    .addAction(speedAction)
+                    .addAction(closeAction)
                     .build()
             )
-            .setBackgroundColor(androidx.car.app.model.CarColor.BLUE) // Gebruik een geldige kleur voor de achtergrond
+            .setBackgroundColor(androidx.car.app.model.CarColor.BLUE)
             .build()
     }
 }
