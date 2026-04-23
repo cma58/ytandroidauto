@@ -31,8 +31,17 @@ import kotlinx.coroutines.launch
 class MainViewModel : ViewModel() {
 
     private val youtubeRepo = YouTubeRepository()
+    private var db: AppDatabase? = null
 
     // ── UI States ──
+    private val _selectedGenre = MutableStateFlow("Alles")
+    val selectedGenre = _selectedGenre.asStateFlow()
+
+    private val _forYouTracks = MutableStateFlow<List<SearchResult>>(emptyList())
+    val forYouTracks = _forYouTracks.asStateFlow()
+
+    private val _playbackSpeed = MutableStateFlow(1.0f)
+    val playbackSpeed = _playbackSpeed.asStateFlow()
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 
@@ -105,15 +114,18 @@ class MainViewModel : ViewModel() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var progressJob: Job? = null
 
+    private var appContext: Context? = null
+
     fun connectToService(context: Context) {
         if (mediaController != null) return
-        
+        appContext = context.applicationContext
         val downloader = AppDownloader.getInstance(context)
+        val database = AppDatabase.getDatabase(context)
+        this.db = database
         
         // Laad gedownloade tracks
         viewModelScope.launch {
-            val db = AppDatabase.getDatabase(context)
-            db.offlineTrackDao().getAllTracks().collect { tracks ->
+            database.offlineTrackDao().getAllTracks().collect { tracks ->
                 _downloadedTracks.value = tracks
                 _downloadedUrls.value = tracks.map { it.videoUrl }.toSet()
             }
@@ -121,9 +133,29 @@ class MainViewModel : ViewModel() {
 
         // Laad recente tracks
         viewModelScope.launch {
-            val db = AppDatabase.getDatabase(context)
-            db.recentTrackDao().getAllRecentTracks().collect { tracks ->
+            database.recentTrackDao().getAllRecentTracks().collect { tracks ->
                 _recentTracks.value = tracks
+            }
+        }
+
+        // Laad recommendations gebaseerd op genre
+        viewModelScope.launch {
+            _selectedGenre.collect { genre ->
+                val flow = if (genre == "Alles") {
+                    database.recommendationCacheDao().getAllRecommendations()
+                } else {
+                    database.recommendationCacheDao().getRecommendationsByGenre(genre)
+                }
+                flow.collect { cached ->
+                    _forYouTracks.value = cached.map { it.toSearchResult() }
+                }
+            }
+        }
+
+        // Initial Seeding
+        viewModelScope.launch {
+            if (database.recommendationCacheDao().getCount() == 0) {
+                seedRecommendations()
             }
         }
 
@@ -141,6 +173,15 @@ class MainViewModel : ViewModel() {
             setupPlayerListener()
             syncState()
         }, MoreExecutors.directExecutor())
+    }
+
+    fun disconnectFromService() {
+        controllerFuture?.let {
+            MediaController.releaseFuture(it)
+        }
+        mediaController = null
+        controllerFuture = null
+        stopProgressUpdate()
     }
 
     private fun setupPlayerListener() {
@@ -196,9 +237,26 @@ class MainViewModel : ViewModel() {
 
     fun playItem(result: SearchResult) {
         val controller = mediaController ?: return
+
+        // Bouw de volledige zoekresultaten-lijst als wachtrij op, met het aangeklikte
+        // item als startindex — zo blijft "Volgende" werken.
         val results = _searchResults.value
-        val mediaItems = results.map { it.toMediaItem() }
         val startIndex = results.indexOfFirst { it.videoUrl == result.videoUrl }.coerceAtLeast(0)
+        val mediaItems = results.map { r ->
+            val rMetadata = MediaMetadata.Builder()
+                .setTitle(r.title)
+                .setArtist(r.artist)
+                .setArtworkUri(r.thumbnailUrl?.let { Uri.parse(it) })
+                .setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                .build()
+
+            MediaItem.Builder()
+                .setMediaId(r.videoUrl)
+                .setUri(Uri.parse(r.videoUrl))
+                .setMediaMetadata(rMetadata)
+                .build()
+        }
 
         controller.setMediaItems(mediaItems, startIndex, 0L)
         controller.prepare()
@@ -263,9 +321,108 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun disconnectFromService() {
-        controllerFuture?.let { MediaController.releaseFuture(it) }
-        mediaController = null
+    fun runCommand(command: String) {
+        viewModelScope.launch {
+            ShizukuManager.runCommand(command)
+        }
+    }
+
+    fun toggleFavorite() {
+        val current = _nowPlaying.value ?: return
+        val context = appContext ?: return
+        viewModelScope.launch {
+            val db = AppDatabase.getDatabase(context)
+            db.playEventDao().insertEvent(
+                com.ytauto.db.PlayEvent(
+                    mediaId = current.title,
+                    title = current.title,
+                    artist = current.artist
+                )
+            )
+            Log.d("Algorithm", "Favoriet opgeslagen voor: ${current.title}. Algoritme gevoed.")
+            updateForYouList(current.artist)
+        }
+    }
+
+    private fun updateForYouList(artist: String) {
+        viewModelScope.launch {
+            try {
+                val recommendations = youtubeRepo.search("More from $artist", maxResults = 10)
+                // Sla op in cache onder "Ontdekking"
+                val cacheItems = recommendations.map { it.toCacheEntity("Ontdekking") }
+                db?.recommendationCacheDao()?.insertAll(cacheItems)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error updating for you list", e)
+            }
+        }
+    }
+
+    private suspend fun seedRecommendations() {
+        generateMix("Oujda")
+        generateMix("Franse Rap")
+        generateMix("Ontdekking")
+    }
+
+    fun generateMix(genre: String) {
+        val query = when (genre) {
+            "Oujda" -> "Oujda Marokkaanse muziek Rai Reggada 2024"
+            "Franse Rap" -> "French Rap 2024 New"
+            "Ontdekking" -> "Top Hits 2024 Discovery"
+            else -> genre
+        }
+        viewModelScope.launch {
+            try {
+                val results = youtubeRepo.search(query, maxResults = 15)
+                val cacheItems = results.map { it.toCacheEntity(genre) }
+                db?.recommendationCacheDao()?.insertAll(cacheItems)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Failed to generate mix for $genre", e)
+            }
+        }
+    }
+
+    fun setGenre(genre: String) {
+        _selectedGenre.value = genre
+    }
+
+    private fun com.ytauto.db.RecommendationCache.toSearchResult() = SearchResult(
+        videoUrl = videoUrl,
+        title = title,
+        artist = artist,
+        thumbnailUrl = thumbnailUrl,
+        durationSeconds = 0 // Cache slaat dit niet op, maar search result heeft het wel nodig.
+    )
+
+    private fun SearchResult.toCacheEntity(genre: String) = com.ytauto.db.RecommendationCache(
+        videoUrl = videoUrl,
+        title = title,
+        artist = artist,
+        thumbnailUrl = thumbnailUrl,
+        genre = genre
+    )
+
+    fun setPlaybackSpeed(speed: Float) {
+        _playbackSpeed.value = speed
+        mediaController?.setPlaybackSpeed(speed)
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        viewModelScope.launch {
+            delay(minutes * 60 * 1000L)
+            mediaController?.pause()
+        }
+    }
+
+    fun toggleShuffle() {
+        mediaController?.shuffleModeEnabled = !(mediaController?.shuffleModeEnabled ?: false)
+    }
+
+    fun toggleRepeat() {
+        mediaController?.repeatMode = when (mediaController?.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
+            Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
+        }
     }
 
     fun playRecentTrack(track: com.ytauto.db.RecentTrack) {

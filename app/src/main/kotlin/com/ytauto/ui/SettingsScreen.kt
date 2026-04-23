@@ -133,23 +133,46 @@ fun SettingsScreen(
                         
                         if (!isShizukuAvailable) {
                             Text("Shizuku is niet gedetecteerd. Start de Shizuku app!", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = viewModel::refreshShizuku) {
+                                Icon(Icons.Default.Refresh, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Check Shizuku Status")
+                            }
                         } else if (!hasShizukuPermission) {
                             Button(onClick = viewModel::requestShizukuPermission, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                                Icon(Icons.Default.GppGood, null)
+                                Spacer(Modifier.width(8.dp))
                                 Text("Geef Shizuku Toestemming")
                             }
                         } else {
-                            Button(
-                                onClick = {
-                                    try {
-                                        viewModel.applyShizukuHacks()
-                                        Toast.makeText(context, "Succes! Android Auto database is gehackt.", Toast.LENGTH_LONG).show()
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Hack mislukt: ${e.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                            ) {
-                                Text("Injecteer in Android Auto")
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        try {
+                                            viewModel.applyShizukuHacks()
+                                            Toast.makeText(context, "Succes! Whitelist geüpdatet.", Toast.LENGTH_LONG).show()
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Hack mislukt: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                ) {
+                                    Icon(Icons.Default.FlashOn, null)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Injecteer App")
+                                }
+                                
+                                Button(
+                                    onClick = { viewModel.runCommand("am force-stop com.google.android.projection.gearhead") },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onErrorContainer)
+                                ) {
+                                    Icon(Icons.Default.RestartAlt, null)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Restart AA")
+                                }
                             }
                         }
                     }

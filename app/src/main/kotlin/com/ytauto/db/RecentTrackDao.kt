@@ -12,10 +12,10 @@ interface RecentTrackDao {
     suspend fun getAllRecentTracksOnce(): List<RecentTrack>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRecentTrack(track: RecentTrack)
+    suspend fun insertRecentTrack(track: RecentTrack): Long
 
-    @Query("DELETE FROM recent_tracks WHERE videoUrl NOT IN (SELECT videoUrl FROM recent_tracks ORDER BY lastPlayedAt DESC LIMIT 50)")
-    suspend fun trimRecentTracks()
+    @Query("DELETE FROM recent_tracks WHERE lastPlayedAt < (SELECT MIN(lastPlayedAt) FROM (SELECT lastPlayedAt FROM recent_tracks ORDER BY lastPlayedAt DESC LIMIT 50))")
+    suspend fun trimRecentTracks(): Int
 
     @Transaction
     suspend fun addAndTrim(track: RecentTrack) {

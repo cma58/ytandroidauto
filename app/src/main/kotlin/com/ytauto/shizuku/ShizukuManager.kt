@@ -88,18 +88,24 @@ object ShizukuManager {
         }
     }
 
-    // Shizuku.newProcess is @hide in de publieke API — via reflectie benaderen.
+    // Shizuku.newProcess is @hide in de publieke API — via reflectie benaderen om visibility errors te voorkomen.
     private val newProcessMethod by lazy {
-        Shizuku::class.java.getDeclaredMethod(
-            "newProcess",
-            Array<String>::class.java,
-            Array<String>::class.java,
-            String::class.java
-        ).apply { isAccessible = true }
+        try {
+            Class.forName("rikka.shizuku.Shizuku").getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java
+            ).apply { isAccessible = true }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to reflect newProcess", e)
+            null
+        }
     }
 
-    private fun newProcess(cmd: Array<String>, env: Array<String>? = null, dir: String? = null): Process {
-        return newProcessMethod.invoke(null, cmd, env, dir) as Process
+    private fun executeShizukuProcess(cmd: Array<String>, env: Array<String>? = null, dir: String? = null): Process {
+        val method = newProcessMethod ?: throw IllegalStateException("Shizuku newProcess method not found via reflection")
+        return method.invoke(null, cmd, env, dir) as Process
     }
 
     fun runCommand(command: String): String {
@@ -108,7 +114,7 @@ object ShizukuManager {
 
         Log.d(TAG, "Running command: $command")
         return try {
-            val process = newProcess(arrayOf("sh", "-c", command), null, null)
+            val process = executeShizukuProcess(arrayOf("sh", "-c", command), null, null)
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val errorReader = BufferedReader(InputStreamReader(process.errorStream))
             val output = StringBuilder()

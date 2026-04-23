@@ -3,17 +3,17 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("kotlin-kapt")
+    id("com.google.devtools.ksp")
 }
 
 android {
     namespace = "com.ytauto"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.ytauto"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }
@@ -102,12 +102,10 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:$workVersion")
 
     // ── Room (Database voor Offline Tracks) ──
-    val roomVersion = "2.7.0-alpha11"
+    val roomVersion = "2.7.0-alpha01"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
-    // Gebruik KSP voor Room (als KSP is geconfigureerd) of kapt
-    // Voor nu voegen we kapt toe voor eenvoudige compatibiliteit
-    kapt("androidx.room:room-compiler:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
 
     // ── Guava (voor ListenableFuture in Media3 callbacks) ──
     implementation("com.google.guava:guava:33.3.1-android")
