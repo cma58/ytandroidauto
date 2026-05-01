@@ -37,9 +37,11 @@ fun SettingsScreen(
     val isShizukuAvailable by viewModel.isShizukuAvailable.collectAsState()
     val hasShizukuPermission by viewModel.hasShizukuPermission.collectAsState()
 
-    // Lokale UI States (In een echte app via DataStore)
-    var sponsorBlockEnabled by remember { mutableStateOf(true) }
+    val sponsorBlockEnabled by viewModel.isSponsorBlockEnabled.collectAsState()
     var autoSyncEnabled by remember { mutableStateOf(true) }
+
+    val partyUrl by viewModel.partyModeUrl.collectAsState()
+    LaunchedEffect(Unit) { viewModel.loadPartyModeUrl() }
 
     Scaffold(
         topBar = {
@@ -71,7 +73,7 @@ fun SettingsScreen(
                     title = "SponsorBlock (Auto-Skip)",
                     subtitle = "Sla intro's en gepraat in muziekvideo's automatisch over",
                     checked = sponsorBlockEnabled,
-                    onCheckedChange = { sponsorBlockEnabled = it }
+                    onCheckedChange = { viewModel.setSponsorBlock(it) }
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -165,8 +167,6 @@ fun SettingsScreen(
             item {
                 Text("Party Mode", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                 Spacer(modifier = Modifier.height(12.dp))
-
-                val partyUrl = remember { viewModel.getPartyModeUrl() }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),

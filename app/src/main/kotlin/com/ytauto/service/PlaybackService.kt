@@ -68,6 +68,7 @@ class PlaybackService : MediaLibraryService() {
     private val CROSSFADE_DURATION_MS = 3000L
 
     private var isVideoModeEnabled = false
+    private var isSponsorBlockEnabled = true
     private val searchResultsCache = mutableMapOf<String, List<SearchResult>>()
     private var lastSearchQuery: String = ""
     private var partyServer: com.ytauto.remote.PartyServer? = null
@@ -105,16 +106,18 @@ class PlaybackService : MediaLibraryService() {
                     fadeIn()
                 }
 
-                // --- NIEUW: SPONSORBLOCK FETCH ---
                 serviceScope.launch {
-                    val videoId = mediaItem?.mediaId
-                    if (videoId != null && !videoId.startsWith("file://") && !videoId.startsWith("/")) {
-                        currentSkipSegments = com.ytauto.data.SponsorBlockClient.getSkipSegments(videoId)
+                    val videoUrl = mediaItem?.mediaId
+                    currentSkipSegments = if (isSponsorBlockEnabled &&
+                        videoUrl != null &&
+                        !videoUrl.startsWith("file://") &&
+                        !videoUrl.startsWith("/")
+                    ) {
+                        com.ytauto.data.SponsorBlockClient.getSkipSegments(videoUrl)
                     } else {
-                        currentSkipSegments = emptyList()
+                        emptyList()
                     }
                 }
-                // ---------------------------------
 
                 mediaItem?.let { item ->
                     serviceScope.launch {
@@ -140,6 +143,12 @@ class PlaybackService : MediaLibraryService() {
                         // Increment play count for offline track
                         db.offlineTrackDao().incrementPlayCount(item.mediaId)
                     }
+                }
+            }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+                    setupAudioEffects(audioSessionId)
                 }
             }
 
@@ -450,6 +459,7 @@ class PlaybackService : MediaLibraryService() {
             val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
             availableSessionCommands.add(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
             availableSessionCommands.add(SessionCommand(ACTION_SET_AUDIO_EFFECTS, Bundle.EMPTY))
+            availableSessionCommands.add(SessionCommand(ACTION_SET_SPONSORBLOCK, Bundle.EMPTY))
             return MediaSession.ConnectionResult.accept(availableSessionCommands.build(), connectionResult.availablePlayerCommands)
         }
 
@@ -481,6 +491,11 @@ class PlaybackService : MediaLibraryService() {
                         val level = args.getInt(EXTRA_EQ_BAND_LEVEL)
                         equalizer?.let { if (index < it.numberOfBands) it.setBandLevel(index.toShort(), level.toShort()) }
                     }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_SET_SPONSORBLOCK -> {
+                    isSponsorBlockEnabled = args.getBoolean(EXTRA_SPONSORBLOCK_ENABLED, true)
+                    if (!isSponsorBlockEnabled) currentSkipSegments = emptyList()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
@@ -546,6 +561,8 @@ class PlaybackService : MediaLibraryService() {
         const val OFFLINE_TRACKS_ID = "[offlineTracksID]"
         const val RECENT_TRACKS_ID = "[recentTracksID]"
         const val FOR_YOU_ID = "[forYouID]"
+        const val ACTION_SET_SPONSORBLOCK = "com.ytauto.ACTION_SET_SPONSORBLOCK"
+        const val EXTRA_SPONSORBLOCK_ENABLED = "extra_sponsorblock_enabled"
     }
 }
 

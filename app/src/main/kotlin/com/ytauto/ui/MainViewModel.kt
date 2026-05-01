@@ -96,6 +96,9 @@ class MainViewModel : ViewModel() {
     private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
     val downloadProgress = _downloadProgress.asStateFlow()
 
+    private val _isSponsorBlockEnabled = MutableStateFlow(true)
+    val isSponsorBlockEnabled = _isSponsorBlockEnabled.asStateFlow()
+
     val isShizukuAvailable = ShizukuManager.isAvailable
     val hasShizukuPermission = ShizukuManager.hasPermission
 
@@ -397,15 +400,28 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun getPartyModeUrl(): String {
-        val ip = try {
-            NetworkInterface.getNetworkInterfaces()
-                ?.toList()
-                ?.flatMap { it.inetAddresses.toList() }
-                ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
-                ?.hostAddress
-        } catch (e: Exception) { null }
-        return if (ip != null) "http://$ip:8080" else "http://<jouw-ip>:8080"
+    private val _partyModeUrl = MutableStateFlow("Laden...")
+    val partyModeUrl = _partyModeUrl.asStateFlow()
+
+    fun loadPartyModeUrl() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ip = try {
+                NetworkInterface.getNetworkInterfaces()
+                    ?.toList()
+                    ?.flatMap { it.inetAddresses.toList() }
+                    ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
+                    ?.hostAddress
+            } catch (e: Exception) { null }
+            _partyModeUrl.value = if (ip != null) "http://$ip:8080" else "http://<jouw-ip>:8080"
+        }
+    }
+
+    fun setSponsorBlock(enabled: Boolean) {
+        _isSponsorBlockEnabled.value = enabled
+        mediaController?.sendCustomCommand(
+            androidx.media3.session.SessionCommand(PlaybackService.ACTION_SET_SPONSORBLOCK, Bundle.EMPTY),
+            Bundle().apply { putBoolean(PlaybackService.EXTRA_SPONSORBLOCK_ENABLED, enabled) }
+        )
     }
 }
 

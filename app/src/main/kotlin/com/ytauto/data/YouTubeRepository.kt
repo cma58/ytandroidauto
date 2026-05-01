@@ -23,8 +23,12 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItem
  */
 class YouTubeRepository {
 
-    // Referentie naar de YouTube-service binnen NewPipe
     private val youtubeService = ServiceList.YouTube
+
+    // Stream-URL cache: videoUrl -> Pair(streamUrl, expiryTimeMs)
+    // YouTube stream-URLs zijn ~6 uur geldig; we cachen ze 5 uur.
+    private val streamUrlCache = mutableMapOf<String, Pair<String, Long>>()
+    private val CACHE_TTL_MS = 5 * 60 * 60 * 1000L
 
     /**
      * Zoekt op YouTube en geeft een lijst van [SearchResult] objecten terug.
@@ -76,12 +80,12 @@ class YouTubeRepository {
      * @return De directe URL naar de audio-stream, of null als er geen gevonden wordt
      */
     suspend fun getAudioStreamUrl(videoUrl: String): String? {
+        streamUrlCache["a:$videoUrl"]?.let { (url, expiry) ->
+            if (System.currentTimeMillis() < expiry) return url
+        }
         return withContext(Dispatchers.IO) {
             try {
-                // Haal alle stream-informatie op voor de video
                 val streamInfo = StreamInfo.getInfo(youtubeService, videoUrl)
-
-                // Haal alle beschikbare audio-streams op
                 val audioStreams: List<AudioStream> = streamInfo.audioStreams
 
                 if (audioStreams.isEmpty()) {
@@ -89,12 +93,9 @@ class YouTubeRepository {
                     return@withContext null
                 }
 
-                // Selecteer de beste audio-stream:
-                // Prioriteit: M4A (AAC) > WebM (Opus), hoogste bitrate
                 val bestStream = audioStreams
                     .sortedWith(
                         compareByDescending<AudioStream> { stream ->
-                            // Prefereer M4A/MP4 boven WebM (betere compatibiliteit)
                             when {
                                 stream.format?.mimeType?.contains("mp4") == true -> 1
                                 stream.format?.mimeType?.contains("webm") == true -> 0
@@ -104,14 +105,11 @@ class YouTubeRepository {
                     )
                     .first()
 
-                android.util.Log.d(
-                    TAG,
-                    "Selected stream: ${bestStream.format?.mimeType}, " +
-                    "${bestStream.averageBitrate}kbps for: $videoUrl"
-                )
+                android.util.Log.d(TAG, "Selected stream: ${bestStream.format?.mimeType}, ${bestStream.averageBitrate}kbps")
 
-                bestStream.content
-
+                bestStream.content?.also { url ->
+                    streamUrlCache["a:$videoUrl"] = Pair(url, System.currentTimeMillis() + CACHE_TTL_MS)
+                }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Failed to get audio URL for: $videoUrl", e)
                 null
@@ -124,24 +122,23 @@ class YouTubeRepository {
      * Kiest bij voorkeur een stream die zowel video als audio bevat (muxed).
      */
     suspend fun getVideoStreamUrl(videoUrl: String): String? {
+        streamUrlCache["v:$videoUrl"]?.let { (url, expiry) ->
+            if (System.currentTimeMillis() < expiry) return url
+        }
         return withContext(Dispatchers.IO) {
             try {
                 val streamInfo = StreamInfo.getInfo(youtubeService, videoUrl)
-                
-                // 1. Probeer eerst Muxed MP4 (Video + Audio in één) - Meest stabiel
+
                 val bestMuxed = streamInfo.videoStreams
                     .filter { it.format?.mimeType?.contains("mp4") == true }
                     .maxByOrNull { it.resolution }
 
-                if (bestMuxed != null) {
-                    android.util.Log.d(TAG, "Selected muxed MP4: ${bestMuxed.resolution}")
-                    return@withContext bestMuxed.content
-                }
+                val result = bestMuxed?.content
+                    ?: streamInfo.videoStreams.firstOrNull()?.content
 
-                // 2. Fallback: Eerste beschikbare video stream
-                val fallback = streamInfo.videoStreams.firstOrNull()
-                android.util.Log.d(TAG, "Selected fallback stream: ${fallback?.resolution}")
-                fallback?.content
+                result?.also { url ->
+                    streamUrlCache["v:$videoUrl"] = Pair(url, System.currentTimeMillis() + CACHE_TTL_MS)
+                }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Failed to get video URL for: $videoUrl", e)
                 null
