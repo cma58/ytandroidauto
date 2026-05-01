@@ -7,11 +7,12 @@ YTAuto is een geavanceerde, privé Android-applicatie die YouTube-content naar j
 - **YouTube Audio & Video**: Schakel naadloos tussen alleen audio (data-besparend) en volledige videoweergave op je telefoon of head-unit.
 - **Android Auto Integratie**: Volledig gecertificeerde Media3-integratie voor een veilige en intuïtieve bediening tijdens het rijden.
 - **Offline Bibliotheek**: Download je favoriete tracks voor gebruik zonder internetverbinding.
-- **AI-Aanbevelingen**: Een "Speciaal voor Jou" sectie die leert van je luistergedrag en automatisch suggesties doet.
+- **AI-Aanbevelingen (Smart Mixing)**: Een "Speciaal voor Jou" sectie met gepersonaliseerde mixen (bijv. Oujda Mix, Franse Rap) en dynamische aanbevelingen op basis van je luistergeschiedenis.
+- **SponsorBlock**: Slaat automatisch gesponsorde segmenten in video's over voor een ononderbroken luisterervaring.
 - **Pro Audio Engine**: 
   - 5-Bands Equalizer met presets (Bass Max, Vocal, etc.).
   - Krachtige Bass Boost en Loudness Enhancer speciaal getuned voor auto-speakers.
-  - Naadloze crossfade tussen nummers.
+  - Naadloze crossfade tussen nummers met automatische volume-fades.
 - **Systeem Hacks (Shizuku)**: Deactiveer automatisch Android Auto rij-restricties (ADB/Shizuku vereist) om volledige interface-toegang te behouden.
 - **Share-to-Car**: Deel een link vanuit de YouTube- of Spotify-app direct naar YTAuto om het afspelen te starten.
 - **Guest Casting (Party Mode)**: Ingebouwde webserver waarmee passagiers nummers aan de wachtrij kunnen toevoegen via hun eigen browser.
