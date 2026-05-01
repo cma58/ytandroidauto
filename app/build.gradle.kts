@@ -88,6 +88,9 @@ dependencies {
     // ── AndroidX Core ──
     implementation("androidx.core:core-ktx:1.15.0")
 
+    // ── DataStore (persistente instellingen) ──
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
     // ── Android Car App Library (voor de Video-Hack) ──
     // app-automotive is ALLEEN voor Automotive OS. Voor telefoon + Android Auto projectie:
     val carAppVersion = "1.7.0"

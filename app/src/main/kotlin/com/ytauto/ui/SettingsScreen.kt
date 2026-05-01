@@ -38,7 +38,7 @@ fun SettingsScreen(
     val hasShizukuPermission by viewModel.hasShizukuPermission.collectAsState()
 
     val sponsorBlockEnabled by viewModel.isSponsorBlockEnabled.collectAsState()
-    var autoSyncEnabled by remember { mutableStateOf(true) }
+    val autoSyncEnabled by viewModel.isAutoSyncEnabled.collectAsState()
 
     val partyUrl by viewModel.partyModeUrl.collectAsState()
     LaunchedEffect(Unit) { viewModel.loadPartyModeUrl() }
@@ -83,7 +83,7 @@ fun SettingsScreen(
                     title = "Smart Auto-Sync",
                     subtitle = "Download 's nachts nieuwe nummers via Wi-Fi",
                     checked = autoSyncEnabled,
-                    onCheckedChange = { autoSyncEnabled = it }
+                    onCheckedChange = { viewModel.setAutoSync(context, it) }
                 )
             }
 

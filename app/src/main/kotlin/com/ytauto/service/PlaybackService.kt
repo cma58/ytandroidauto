@@ -69,7 +69,10 @@ class PlaybackService : MediaLibraryService() {
 
     private var isVideoModeEnabled = false
     private var isSponsorBlockEnabled = true
-    private val searchResultsCache = mutableMapOf<String, List<SearchResult>>()
+    // Maximaal 20 zoekopdrachten bijhouden; oudste verwijderen als de limiet bereikt is.
+    private val searchResultsCache = object : LinkedHashMap<String, List<SearchResult>>(20, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, List<SearchResult>>) = size > 20
+    }
     private var lastSearchQuery: String = ""
     private var partyServer: com.ytauto.remote.PartyServer? = null
 
