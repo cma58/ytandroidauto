@@ -2,6 +2,7 @@ package com.ytauto.service
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -19,12 +20,15 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import com.ytauto.R
+import com.ytauto.ui.MainActivity
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -148,7 +152,16 @@ class PlaybackService : MediaLibraryService() {
             }
         })
 
-        mediaLibrarySession = MediaLibrarySession.Builder(this, player, librarySessionCallback).build()
+        val sessionActivity = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        mediaLibrarySession = MediaLibrarySession.Builder(this, player, librarySessionCallback)
+            .setSessionActivity(sessionActivity)
+            .setCustomLayout(listOf(buildVideoToggleButton()))
+            .build()
 
         partyServer = com.ytauto.remote.PartyServer { url ->
             serviceScope.launch {
@@ -450,6 +463,7 @@ class PlaybackService : MediaLibraryService() {
                     if (isVideoModeEnabled != newValue) {
                         isVideoModeEnabled = newValue
                         refreshCurrentItem()
+                        mediaLibrarySession?.setCustomLayout(listOf(buildVideoToggleButton()))
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -500,6 +514,16 @@ class PlaybackService : MediaLibraryService() {
             player.play()
         }
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun buildVideoToggleButton(): CommandButton {
+        val isVideo = isVideoModeEnabled
+        return CommandButton.Builder()
+            .setDisplayName(if (isVideo) "Audio modus" else "Video modus")
+            .setSessionCommand(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
+            .setIconResId(if (isVideo) R.drawable.ic_audiotrack_car else R.drawable.ic_videocam_car)
+            .build()
     }
 
     private fun buildBrowsableItem(id: String, title: String, subtitle: String): MediaItem {
