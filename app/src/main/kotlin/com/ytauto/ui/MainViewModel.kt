@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -393,6 +395,17 @@ class MainViewModel : ViewModel() {
             val db = AppDatabase.getDatabase(context)
             db.playEventDao().clearAnalytics()
         }
+    }
+
+    fun getPartyModeUrl(): String {
+        val ip = try {
+            NetworkInterface.getNetworkInterfaces()
+                ?.toList()
+                ?.flatMap { it.inetAddresses.toList() }
+                ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
+                ?.hostAddress
+        } catch (e: Exception) { null }
+        return if (ip != null) "http://$ip:8080" else "http://<jouw-ip>:8080"
     }
 }
 

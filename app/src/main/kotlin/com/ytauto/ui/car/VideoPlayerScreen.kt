@@ -32,14 +32,20 @@ class VideoPlayerScreen(carContext: CarContext) : Screen(carContext) {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
 
+    // Bewaar de surface zodat we hem kunnen doorgeven zodra de controller klaar is.
+    private var pendingSurface: android.view.Surface? = null
+
     private val surfaceCallback = object : SurfaceCallback {
         override fun onSurfaceAvailable(surfaceContainer: SurfaceContainer) {
-            Log.d("VideoPlayerScreen", "Surface available, setting to controller")
+            Log.d("VideoPlayerScreen", "Surface available")
+            pendingSurface = surfaceContainer.surface
+            // Controller kan al klaar zijn (bv. bij herverbinding); stel direct in.
             controller?.setVideoSurface(surfaceContainer.surface)
         }
 
         override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
             Log.d("VideoPlayerScreen", "Surface destroyed")
+            pendingSurface = null
             controller?.setVideoSurface(null)
         }
     }
@@ -51,14 +57,17 @@ class VideoPlayerScreen(carContext: CarContext) : Screen(carContext) {
             try {
                 val mediaController = controllerFuture?.get()
                 controller = mediaController
-                
+
+                // Stel de surface in als die al beschikbaar was vóór de controller klaar was.
+                pendingSurface?.let { mediaController?.setVideoSurface(it) }
+
                 // Activeer Video Mode in de service
                 val args = Bundle().apply { putBoolean(PlaybackService.EXTRA_VIDEO_MODE, true) }
                 mediaController?.sendCustomCommand(
                     SessionCommand(PlaybackService.ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY),
                     args
                 )
-                
+
                 invalidate()
                 Log.d("VideoPlayerScreen", "Connected and Video Mode requested")
             } catch (e: Exception) {
