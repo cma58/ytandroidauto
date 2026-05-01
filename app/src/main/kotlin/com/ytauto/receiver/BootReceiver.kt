@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.ytauto.shizuku.ShizukuManager
@@ -22,8 +24,14 @@ class BootReceiver : BroadcastReceiver() {
             // 1. Initialiseer Shizuku verbinding
             ShizukuManager.init()
 
-            // 2. Start een directe Smart Sync check
-            val syncRequest = OneTimeWorkRequestBuilder<DownloadWorker>().build()
+            // 2. Start Smart Sync alleen op Wi-Fi
+            val syncRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.UNMETERED)
+                        .build()
+                )
+                .build()
             WorkManager.getInstance(context).enqueue(syncRequest)
         }
     }

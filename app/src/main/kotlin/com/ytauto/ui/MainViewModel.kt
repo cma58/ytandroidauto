@@ -7,6 +7,13 @@ import android.os.Bundle
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.util.concurrent.TimeUnit
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -16,15 +23,20 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.ytauto.data.AppDownloader
 import com.ytauto.data.SearchResult
+import com.ytauto.data.SettingsRepository
 import com.ytauto.data.YouTubeRepository
 import com.ytauto.db.AppDatabase
 import com.ytauto.service.PlaybackService
 import com.ytauto.shizuku.ShizukuManager
+import com.ytauto.worker.DownloadWorker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -94,6 +106,15 @@ class MainViewModel : ViewModel() {
     private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
     val downloadProgress = _downloadProgress.asStateFlow()
 
+    // DataStore-backed settings — persisted across app restarts
+    private var appContext: Context? = null
+
+    private val _isSponsorBlockEnabled = MutableStateFlow(true)
+    val isSponsorBlockEnabled = _isSponsorBlockEnabled.asStateFlow()
+
+    private val _isAutoSyncEnabled = MutableStateFlow(true)
+    val isAutoSyncEnabled = _isAutoSyncEnabled.asStateFlow()
+
     val isShizukuAvailable = ShizukuManager.isAvailable
     val hasShizukuPermission = ShizukuManager.hasPermission
 
@@ -107,6 +128,16 @@ class MainViewModel : ViewModel() {
 
     fun connectToService(context: Context) {
         if (mediaController != null) return
+        if (appContext == null) {
+            appContext = context.applicationContext
+            // Load persisted settings
+            viewModelScope.launch {
+                SettingsRepository.sponsorBlockEnabled(context).collect { _isSponsorBlockEnabled.value = it }
+            }
+            viewModelScope.launch {
+                SettingsRepository.autoSyncEnabled(context).collect { _isAutoSyncEnabled.value = it }
+            }
+        }
         
         val downloader = AppDownloader.getInstance(context)
         
@@ -392,6 +423,53 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             val db = AppDatabase.getDatabase(context)
             db.playEventDao().clearAnalytics()
+        }
+    }
+
+    private val _partyModeUrl = MutableStateFlow("Laden...")
+    val partyModeUrl = _partyModeUrl.asStateFlow()
+
+    fun loadPartyModeUrl() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ip = try {
+                NetworkInterface.getNetworkInterfaces()
+                    ?.toList()
+                    ?.flatMap { it.inetAddresses.toList() }
+                    ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
+                    ?.hostAddress
+            } catch (e: Exception) { null }
+            _partyModeUrl.value = if (ip != null) "http://$ip:8080" else "http://<jouw-ip>:8080"
+        }
+    }
+
+    fun setSponsorBlock(enabled: Boolean) {
+        _isSponsorBlockEnabled.value = enabled
+        mediaController?.sendCustomCommand(
+            androidx.media3.session.SessionCommand(PlaybackService.ACTION_SET_SPONSORBLOCK, Bundle.EMPTY),
+            Bundle().apply { putBoolean(PlaybackService.EXTRA_SPONSORBLOCK_ENABLED, enabled) }
+        )
+        viewModelScope.launch {
+            appContext?.let { SettingsRepository.setSponsorBlock(it, enabled) }
+        }
+    }
+
+    fun setAutoSync(context: Context, enabled: Boolean) {
+        _isAutoSyncEnabled.value = enabled
+        viewModelScope.launch {
+            SettingsRepository.setAutoSync(context, enabled)
+            if (enabled) {
+                val request = PeriodicWorkRequestBuilder<DownloadWorker>(6, TimeUnit.HOURS)
+                    .setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.UNMETERED)
+                            .build()
+                    )
+                    .build()
+                WorkManager.getInstance(context)
+                    .enqueueUniquePeriodicWork("smart_sync", androidx.work.ExistingPeriodicWorkPolicy.KEEP, request)
+            } else {
+                WorkManager.getInstance(context).cancelUniqueWork("smart_sync")
+            }
         }
     }
 }

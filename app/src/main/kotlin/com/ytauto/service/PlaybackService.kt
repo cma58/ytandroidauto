@@ -2,6 +2,7 @@ package com.ytauto.service
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -19,12 +20,15 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import com.ytauto.R
+import com.ytauto.ui.MainActivity
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -64,7 +68,11 @@ class PlaybackService : MediaLibraryService() {
     private val CROSSFADE_DURATION_MS = 3000L
 
     private var isVideoModeEnabled = false
-    private val searchResultsCache = mutableMapOf<String, List<SearchResult>>()
+    private var isSponsorBlockEnabled = true
+    // Maximaal 20 zoekopdrachten bijhouden; oudste verwijderen als de limiet bereikt is.
+    private val searchResultsCache = object : LinkedHashMap<String, List<SearchResult>>(20, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, List<SearchResult>>) = size > 20
+    }
     private var lastSearchQuery: String = ""
     private var partyServer: com.ytauto.remote.PartyServer? = null
 
@@ -101,16 +109,18 @@ class PlaybackService : MediaLibraryService() {
                     fadeIn()
                 }
 
-                // --- NIEUW: SPONSORBLOCK FETCH ---
                 serviceScope.launch {
-                    val videoId = mediaItem?.mediaId
-                    if (videoId != null && !videoId.startsWith("file://") && !videoId.startsWith("/")) {
-                        currentSkipSegments = com.ytauto.data.SponsorBlockClient.getSkipSegments(videoId)
+                    val videoUrl = mediaItem?.mediaId
+                    currentSkipSegments = if (isSponsorBlockEnabled &&
+                        videoUrl != null &&
+                        !videoUrl.startsWith("file://") &&
+                        !videoUrl.startsWith("/")
+                    ) {
+                        com.ytauto.data.SponsorBlockClient.getSkipSegments(videoUrl)
                     } else {
-                        currentSkipSegments = emptyList()
+                        emptyList()
                     }
                 }
-                // ---------------------------------
 
                 mediaItem?.let { item ->
                     serviceScope.launch {
@@ -139,6 +149,12 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
 
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+                    setupAudioEffects(audioSessionId)
+                }
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
                     startPositionTracking()
@@ -148,7 +164,16 @@ class PlaybackService : MediaLibraryService() {
             }
         })
 
-        mediaLibrarySession = MediaLibrarySession.Builder(this, player, librarySessionCallback).build()
+        val sessionActivity = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        mediaLibrarySession = MediaLibrarySession.Builder(this, player, librarySessionCallback)
+            .setSessionActivity(sessionActivity)
+            .setCustomLayout(listOf(buildVideoToggleButton()))
+            .build()
 
         partyServer = com.ytauto.remote.PartyServer { url ->
             serviceScope.launch {
@@ -437,6 +462,7 @@ class PlaybackService : MediaLibraryService() {
             val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
             availableSessionCommands.add(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
             availableSessionCommands.add(SessionCommand(ACTION_SET_AUDIO_EFFECTS, Bundle.EMPTY))
+            availableSessionCommands.add(SessionCommand(ACTION_SET_SPONSORBLOCK, Bundle.EMPTY))
             return MediaSession.ConnectionResult.accept(availableSessionCommands.build(), connectionResult.availablePlayerCommands)
         }
 
@@ -450,6 +476,7 @@ class PlaybackService : MediaLibraryService() {
                     if (isVideoModeEnabled != newValue) {
                         isVideoModeEnabled = newValue
                         refreshCurrentItem()
+                        mediaLibrarySession?.setCustomLayout(listOf(buildVideoToggleButton()))
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -467,6 +494,11 @@ class PlaybackService : MediaLibraryService() {
                         val level = args.getInt(EXTRA_EQ_BAND_LEVEL)
                         equalizer?.let { if (index < it.numberOfBands) it.setBandLevel(index.toShort(), level.toShort()) }
                     }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_SET_SPONSORBLOCK -> {
+                    isSponsorBlockEnabled = args.getBoolean(EXTRA_SPONSORBLOCK_ENABLED, true)
+                    if (!isSponsorBlockEnabled) currentSkipSegments = emptyList()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
@@ -502,6 +534,16 @@ class PlaybackService : MediaLibraryService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    @OptIn(UnstableApi::class)
+    private fun buildVideoToggleButton(): CommandButton {
+        val isVideo = isVideoModeEnabled
+        return CommandButton.Builder()
+            .setDisplayName(if (isVideo) "Audio modus" else "Video modus")
+            .setSessionCommand(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
+            .setIconResId(if (isVideo) R.drawable.ic_audiotrack_car else R.drawable.ic_videocam_car)
+            .build()
+    }
+
     private fun buildBrowsableItem(id: String, title: String, subtitle: String): MediaItem {
         return MediaItem.Builder().setMediaId(id)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setSubtitle(subtitle).setIsBrowsable(true).setIsPlayable(false).build()).build()
@@ -522,6 +564,8 @@ class PlaybackService : MediaLibraryService() {
         const val OFFLINE_TRACKS_ID = "[offlineTracksID]"
         const val RECENT_TRACKS_ID = "[recentTracksID]"
         const val FOR_YOU_ID = "[forYouID]"
+        const val ACTION_SET_SPONSORBLOCK = "com.ytauto.ACTION_SET_SPONSORBLOCK"
+        const val EXTRA_SPONSORBLOCK_ENABLED = "extra_sponsorblock_enabled"
     }
 }
 
