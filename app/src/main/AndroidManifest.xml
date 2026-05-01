@@ -40,6 +40,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
 
+    <!-- Update installatie -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:name=".YTAutoApp"
         android:allowBackup="false"
@@ -49,6 +52,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.YTAuto"
         android:usesCleartextTraffic="true">
+
+        <!-- FileProvider voor APK-installatie -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

@@ -240,7 +240,116 @@ fun SettingsScreen(
 
             item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
 
-            // --- Sectie 5: Privacy ---
+            // --- Sectie 5: App Updates ---
+            item {
+                val updateState by viewModel.updateState.collectAsState()
+
+                Text(
+                    "App Updates",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Automatische updates via GitHub", fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        when (val state = updateState) {
+                            is MainViewModel.UpdateState.Idle -> {
+                                Button(onClick = { viewModel.checkForUpdate() }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.Search, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Controleer op updates")
+                                }
+                            }
+                            is MainViewModel.UpdateState.Checking -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text("Controleren...", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                            is MainViewModel.UpdateState.UpToDate -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Je hebt de nieuwste versie!", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(onClick = { viewModel.checkForUpdate() }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Opnieuw controleren")
+                                }
+                            }
+                            is MainViewModel.UpdateState.Available -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.NewReleases, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Nieuwe versie beschikbaar: ${state.info.tagName}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { viewModel.downloadAndInstall(context, state.info) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Download & Installeer")
+                                }
+                            }
+                            is MainViewModel.UpdateState.Downloading -> {
+                                Text("Downloaden: ${(state.progress * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { state.progress },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            is MainViewModel.UpdateState.ReadyToInstall -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Download klaar!", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = { viewModel.installApk(context) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.InstallMobile, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Installeer nu")
+                                }
+                            }
+                            is MainViewModel.UpdateState.Error -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(state.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(onClick = { viewModel.checkForUpdate() }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Opnieuw proberen")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
+
+            // --- Sectie 6: Privacy ---
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(

@@ -1,9 +1,7 @@
-name: Build APK
+name: Build & Release APK
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
@@ -35,10 +33,18 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
+        env:
+          VERSION_CODE: ${{ github.run_number }}
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Rename APK
+        run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/YTAuto-v${{ github.run_number }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: YTAuto-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+          tag_name: v${{ github.run_number }}
+          name: "YTAuto v${{ github.run_number }}"
+          body: "Automatische build van commit ${{ github.sha }}"
+          files: app/build/outputs/apk/debug/YTAuto-v${{ github.run_number }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

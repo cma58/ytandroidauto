@@ -24,6 +24,8 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.ytauto.data.AppDownloader
 import com.ytauto.data.SearchResult
 import com.ytauto.data.SettingsRepository
+import com.ytauto.data.UpdateChecker
+import com.ytauto.data.UpdateInfo
 import com.ytauto.data.YouTubeRepository
 import com.ytauto.db.AppDatabase
 import com.ytauto.service.PlaybackService
@@ -606,6 +608,102 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             appContext?.let { SettingsRepository.setSponsorBlock(it, enabled) }
         }
+    }
+
+    // ── Auto-update ──────────────────────────────────────────────────────────
+
+    sealed class UpdateState {
+        object Idle : UpdateState()
+        object Checking : UpdateState()
+        object UpToDate : UpdateState()
+        data class Available(val info: UpdateInfo) : UpdateState()
+        data class Downloading(val progress: Float) : UpdateState()
+        object ReadyToInstall : UpdateState()
+        data class Error(val message: String) : UpdateState()
+    }
+
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState = _updateState.asStateFlow()
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            _updateState.value = UpdateState.Checking
+            val latest = UpdateChecker.getLatestRelease()
+            if (latest == null) {
+                _updateState.value = UpdateState.Error("Kan niet verbinden met GitHub")
+                return@launch
+            }
+            if (latest.versionCode > com.ytauto.BuildConfig.VERSION_CODE) {
+                _updateState.value = UpdateState.Available(latest)
+            } else {
+                _updateState.value = UpdateState.UpToDate
+            }
+        }
+    }
+
+    fun downloadAndInstall(context: Context, info: UpdateInfo) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _updateState.value = UpdateState.Downloading(0f)
+            try {
+                val client = okhttp3.OkHttpClient()
+                val request = okhttp3.Request.Builder().url(info.downloadUrl).build()
+                client.newCall(request).execute().use { response ->
+                    val body = response.body ?: run {
+                        _updateState.value = UpdateState.Error("Download mislukt")
+                        return@use
+                    }
+                    val contentLength = body.contentLength()
+                    val outputFile = java.io.File(context.filesDir, "updates/update.apk")
+                    outputFile.parentFile?.mkdirs()
+
+                    var bytesRead = 0L
+                    java.io.FileOutputStream(outputFile).use { out ->
+                        val buffer = ByteArray(8192)
+                        val input = body.byteStream()
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            out.write(buffer, 0, read)
+                            bytesRead += read
+                            if (contentLength > 0) {
+                                _updateState.value = UpdateState.Downloading(
+                                    bytesRead.toFloat() / contentLength
+                                )
+                            }
+                        }
+                    }
+
+                    // Probeer stil installeren via Shizuku
+                    val silentResult = if (ShizukuManager.hasPermission.value) {
+                        ShizukuManager.runCommand("pm install -r ${outputFile.absolutePath}")
+                    } else null
+
+                    _updateState.value = if (
+                        silentResult != null &&
+                        silentResult.contains("Success", ignoreCase = true)
+                    ) {
+                        UpdateState.UpToDate // stil geïnstalleerd
+                    } else {
+                        UpdateState.ReadyToInstall // toon installer-dialog
+                    }
+                }
+            } catch (e: Exception) {
+                _updateState.value = UpdateState.Error(e.message ?: "Onbekende fout")
+            }
+        }
+    }
+
+    fun installApk(context: Context) {
+        val apkFile = java.io.File(context.filesDir, "updates/update.apk")
+        if (!apkFile.exists()) return
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", apkFile
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
     }
 
     fun setAutoSync(context: Context, enabled: Boolean) {
