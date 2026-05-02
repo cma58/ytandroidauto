@@ -501,6 +501,55 @@ class PlaybackService : MediaLibraryService() {
         } catch (e: Exception) { Log.e("PlaybackService", "Loudness error", e) }
     }
 
+    private fun setupAudioEffects(audioSessionId: Int) {
+        try {
+            loudnessEnhancer?.release()
+            loudnessEnhancer = LoudnessEnhancer(audioSessionId).apply {
+                setTargetGain(1500)
+                enabled = true
+            }
+            bassBoost?.release()
+            bassBoost = BassBoost(0, audioSessionId).apply {
+                setStrength(800)
+                enabled = true
+            }
+            equalizer?.release()
+            equalizer = Equalizer(0, audioSessionId).apply { enabled = true }
+        } catch (e: Exception) {
+            Log.e("PlaybackService", "AudioEffects init error", e)
+        }
+    }
+
+    private suspend fun handleIncomingUrl(url: String) {
+        val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            youtubeRepo.search(url, maxResults = 1)
+        }
+        if (results.isEmpty()) return
+        player.addMediaItem(results[0].toMediaItem())
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+        if (!player.isPlaying) player.play()
+    }
+
+    private fun refreshCurrentItem() {
+        val current = player.currentMediaItem ?: return
+        val position = player.currentPosition
+        val index = player.currentMediaItemIndex
+        serviceScope.launch(Dispatchers.IO) {
+            val streamUrl = if (isVideoModeEnabled) {
+                youtubeRepo.getVideoStreamUrl(current.mediaId)
+            } else {
+                youtubeRepo.getAudioStreamUrl(current.mediaId)
+            }
+            streamUrl?.let { url ->
+                val newItem = current.buildUpon().setUri(Uri.parse(url)).build()
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    player.replaceMediaItem(index, newItem)
+                    player.seekTo(position)
+                }
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_SET_AUDIO_EFFECTS) {
             val bass = intent.getIntExtra(EXTRA_BASS_BOOST, -1)

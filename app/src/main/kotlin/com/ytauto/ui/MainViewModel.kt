@@ -137,8 +137,6 @@ class MainViewModel : ViewModel() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var progressJob: Job? = null
 
-    private var appContext: Context? = null
-
     fun connectToService(context: Context) {
         if (mediaController != null) return
         if (appContext == null) {
