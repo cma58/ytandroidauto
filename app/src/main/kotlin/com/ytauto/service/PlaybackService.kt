@@ -623,11 +623,66 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_SET_AUDIO_EFFECTS) {
-            val bass = intent.getIntExtra(EXTRA_BASS_BOOST, -1)
-            val loud = intent.getIntExtra(EXTRA_LOUDNESS, -1)
-            if (bass != -1) setBassBoost(bass)
-            if (loud != -1) setLoudness(loud)
+        when (intent?.action) {
+            ACTION_SET_AUDIO_EFFECTS -> {
+                val bass = intent.getIntExtra(EXTRA_BASS_BOOST, -1)
+                val loud = intent.getIntExtra(EXTRA_LOUDNESS, -1)
+                if (bass != -1) setBassBoost(bass)
+                if (loud != -1) setLoudness(loud)
+            }
+            ACTION_AUTO_PLAY -> {
+                // Bluetooth auto-connect: start playback without touching the phone
+                if (!player.isPlaying) {
+                    if (player.mediaItemCount > 0) {
+                        // Queue already has items — just resume
+                        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                        player.play()
+                    } else {
+                        // Queue empty — load recent tracks, fall back to trending
+                        serviceScope.launch {
+                            val db = AppDatabase.getDatabase(this@PlaybackService)
+                            val recent = db.recentTrackDao().getAllRecentTracksOnce()
+                            if (recent.isNotEmpty()) {
+                                val items = recent.take(20).map { track ->
+                                    val streamUrl = withContext(Dispatchers.IO) {
+                                        youtubeRepo.getAudioStreamUrl(track.videoUrl)
+                                    }
+                                    streamUrl?.let {
+                                        MediaItem.Builder()
+                                            .setMediaId(track.videoUrl)
+                                            .setUri(Uri.parse(it))
+                                            .setMediaMetadata(
+                                                MediaMetadata.Builder()
+                                                    .setTitle(track.title)
+                                                    .setArtist(track.artist)
+                                                    .setArtworkUri(track.thumbnailUrl?.let { u -> Uri.parse(u) })
+                                                    .setIsPlayable(true)
+                                                    .build()
+                                            ).build()
+                                    }
+                                }.filterNotNull()
+                                if (items.isNotEmpty()) {
+                                    player.setMediaItems(items)
+                                    player.shuffleModeEnabled = true
+                                    player.prepare()
+                                    player.play()
+                                    return@launch
+                                }
+                            }
+                            // No recent tracks — search for trending music
+                            val results = withContext(Dispatchers.IO) {
+                                youtubeRepo.search("Popular music 2024", maxResults = 10)
+                            }
+                            if (results.isNotEmpty()) {
+                                val items = results.map { it.toMediaItem() }
+                                player.setMediaItems(items)
+                                player.prepare()
+                                player.play()
+                            }
+                        }
+                    }
+                }
+            }
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -720,5 +775,6 @@ class PlaybackService : MediaLibraryService() {
         const val ACTION_SET_SPONSORBLOCK = "com.ytauto.ACTION_SET_SPONSORBLOCK"
         const val EXTRA_SPONSORBLOCK_ENABLED = "extra_sponsorblock_enabled"
         const val FOR_YOU_GENRE_PREFIX = "[forYouGenre]_"
+        const val ACTION_AUTO_PLAY = "com.ytauto.ACTION_AUTO_PLAY"
     }
 }

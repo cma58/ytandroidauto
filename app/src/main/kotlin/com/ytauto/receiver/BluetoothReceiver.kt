@@ -17,7 +17,7 @@ class BluetoothReceiver : BroadcastReceiver() {
             if (deviceClass == BluetoothClass.Device.AUDIO_VIDEO_CAR_AUDIO) {
                 // Stuur een veilig commando naar je service om af te spelen
                 val serviceIntent = Intent(context, PlaybackService::class.java).apply {
-                    action = "ACTION_AUTO_PLAY"
+                    action = PlaybackService.ACTION_AUTO_PLAY
                 }
                 context.startForegroundService(serviceIntent)
             }
