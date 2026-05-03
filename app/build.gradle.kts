@@ -6,6 +6,10 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
 android {
     namespace = "com.ytauto"
     compileSdk = 35
