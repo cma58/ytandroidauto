@@ -408,6 +408,10 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<List<MediaItem>> {
             val future = SettableFuture.create<List<MediaItem>>()
             serviceScope.launch {
+                // Snapshot the cache here on Main before entering IO coroutines —
+                // LinkedHashMap is not thread-safe and ConcurrentModificationException
+                // inside async(IO) silently fails the whole resolution.
+                val searchSnapshot: List<SearchResult> = searchResultsCache.values.flatten()
                 try {
                     val db = AppDatabase.getDatabase(this@PlaybackService)
                     val offlineDao = db.offlineTrackDao()
@@ -423,9 +427,10 @@ class PlaybackService : MediaLibraryService() {
 
                             if (mediaItemToResolve == null) return@async null
 
-                            // Android Auto sends items back with only mediaId; re-attach metadata from DB/cache
+                            // Android Auto strips all metadata and sends only the mediaId back.
+                            // Re-attach it from our DB/cache using the snapshot taken on Main.
                             val enriched = if (mediaItemToResolve.mediaMetadata.title == null) {
-                                enrichWithMetadata(mediaItemToResolve, db)
+                                enrichWithMetadata(mediaItemToResolve, db, searchSnapshot)
                             } else {
                                 mediaItemToResolve
                             }
@@ -501,7 +506,7 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    private suspend fun enrichWithMetadata(item: MediaItem, db: AppDatabase): MediaItem {
+    private suspend fun enrichWithMetadata(item: MediaItem, db: AppDatabase, cachedSearch: List<SearchResult>): MediaItem {
         val id = item.mediaId
         fun build(title: String, artist: String, thumb: String?) =
             item.buildUpon().setMediaMetadata(
@@ -513,8 +518,8 @@ class PlaybackService : MediaLibraryService() {
                     .build()
             ).build()
 
-        // 1. In-memory search cache (fastest, no IO)
-        searchResultsCache.values.flatten().find { it.videoUrl == id }
+        // 1. In-memory search cache (fastest, no IO) — use pre-snapshotted list for thread safety
+        cachedSearch.find { it.videoUrl == id }
             ?.let { return build(it.title, it.artist, it.thumbnailUrl) }
         // 2. Recent tracks
         db.recentTrackDao().getByUrl(id)
