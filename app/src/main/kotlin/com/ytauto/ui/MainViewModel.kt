@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -167,25 +168,22 @@ class MainViewModel : ViewModel() {
             }
         }
 
-        // Laad recommendations gebaseerd op genre
+        // Laad recommendations gebaseerd op genre — flatMapLatest cancels the previous
+        // DB flow when genre changes, preventing the nested-collect leak.
         viewModelScope.launch {
-            _selectedGenre.collect { genre ->
-                val flow = if (genre == "Alles") {
-                    database.recommendationCacheDao().getAllRecommendations()
-                } else {
-                    database.recommendationCacheDao().getRecommendationsByGenre(genre)
+            _selectedGenre
+                .flatMapLatest { genre ->
+                    if (genre == "Alles") database.recommendationCacheDao().getAllRecommendations()
+                    else database.recommendationCacheDao().getRecommendationsByGenre(genre)
                 }
-                flow.collect { cached ->
-                    _forYouTracks.value = cached.map { it.toSearchResult() }
+                .collect { cached ->
+                    if (cached.isEmpty()) {
+                        // DB empty → live YouTube search and populate cache
+                        generateMix(_selectedGenre.value)
+                    } else {
+                        _forYouTracks.value = cached.map { it.toSearchResult() }
+                    }
                 }
-            }
-        }
-
-        // Initial Seeding
-        viewModelScope.launch {
-            if (database.recommendationCacheDao().getCount() == 0) {
-                seedRecommendations()
-            }
         }
 
         // Verzamel download progressie
@@ -397,11 +395,16 @@ class MainViewModel : ViewModel() {
             "Oujda" -> "Oujda Marokkaanse muziek Rai Reggada 2024"
             "Franse Rap" -> "French Rap 2024 New"
             "Ontdekking" -> "Top Hits 2024 Discovery"
+            "Alles" -> "Popular music hits 2024"
             else -> genre
         }
         viewModelScope.launch {
             try {
                 val results = youtubeRepo.search(query, maxResults = 15)
+                // Show immediately in UI while also persisting to DB
+                if (_selectedGenre.value == genre || genre == "Alles") {
+                    _forYouTracks.value = results
+                }
                 val cacheItems = results.map { it.toCacheEntity(genre) }
                 db?.recommendationCacheDao()?.insertAll(cacheItems)
             } catch (e: Exception) {

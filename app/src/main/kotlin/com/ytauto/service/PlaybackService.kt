@@ -371,9 +371,27 @@ class PlaybackService : MediaLibraryService() {
                             } else {
                                 db.recommendationCacheDao().getRecommendationsByGenre(genre)
                             }
-                            // Collect once from flow
                             val cached = flow.first()
-                            val mediaItems = cached.map { it.toMediaItem() }
+                            val mediaItems = if (cached.isNotEmpty()) {
+                                // Cache hit — store in searchResultsCache so enrichWithMetadata finds them
+                                val sr = cached.map { it.toSearchResult() }
+                                searchResultsCache[genre] = sr
+                                cached.map { it.toMediaItem() }
+                            } else {
+                                // Cache empty — live YouTube search
+                                val query = when (genre) {
+                                    "Alles" -> "Popular music hits 2024"
+                                    "Oujda" -> "Oujda Marokkaanse muziek Rai Reggada 2024"
+                                    "Franse Rap" -> "French Rap 2024"
+                                    "Ontdekking" -> "Top Hits 2024 Discovery"
+                                    else -> genre
+                                }
+                                val results = withContext(Dispatchers.IO) {
+                                    youtubeRepo.search(query, maxResults = 15)
+                                }
+                                searchResultsCache[genre] = results
+                                results.map { it.toMediaItem() }
+                            }
                             future.set(LibraryResult.ofItemList(ImmutableList.copyOf(mediaItems), params))
                         }
                         future
@@ -583,7 +601,7 @@ class PlaybackService : MediaLibraryService() {
         val current = player.currentMediaItem ?: return
         val position = player.currentPosition
         val index = player.currentMediaItemIndex
-        // Capture before entering coroutine so metadata is never lost
+        val wasPlaying = player.isPlaying
         val mediaId = current.mediaId
         val savedMetadata = current.mediaMetadata
         serviceScope.launch {
@@ -598,6 +616,9 @@ class PlaybackService : MediaLibraryService() {
                 .build()
             player.replaceMediaItem(index, newItem)
             player.seekTo(position)
+            // Re-prepare if player was idle (e.g. first load in video mode)
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
+            if (wasPlaying) player.play()
         }
     }
 
@@ -665,6 +686,10 @@ class PlaybackService : MediaLibraryService() {
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
             .build())
         .build()
+
+    private fun com.ytauto.db.RecommendationCache.toSearchResult() = SearchResult(
+        videoUrl = videoUrl, title = title, artist = artist, thumbnailUrl = thumbnailUrl, durationSeconds = 0
+    )
 
     private fun com.ytauto.db.RecommendationCache.toMediaItem() = MediaItem.Builder()
         .setMediaId(videoUrl)
