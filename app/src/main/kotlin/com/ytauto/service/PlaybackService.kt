@@ -48,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * PlaybackService — De kern van de app
@@ -439,19 +440,25 @@ class PlaybackService : MediaLibraryService() {
 
         @OptIn(UnstableApi::class)
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
-            val connectionResult = super.onConnect(session, controller)
-            val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
-            availableSessionCommands.add(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
-            availableSessionCommands.add(SessionCommand(ACTION_SET_AUDIO_EFFECTS, Bundle.EMPTY))
-            availableSessionCommands.add(SessionCommand(ACTION_SET_SPONSORBLOCK, Bundle.EMPTY))
-            val playerCommands = connectionResult.availablePlayerCommands.buildUpon()
+            val defaultResult = super.onConnect(session, controller)
+            val availableSessionCommands = defaultResult.availableSessionCommands.buildUpon()
+                .add(SessionCommand(ACTION_TOGGLE_VIDEO_MODE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_SET_AUDIO_EFFECTS, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_SET_SPONSORBLOCK, Bundle.EMPTY))
+                .build()
+            val playerCommands = defaultResult.availablePlayerCommands.buildUpon()
                 .add(Player.COMMAND_PLAY_PAUSE)
                 .add(Player.COMMAND_STOP)
                 .add(Player.COMMAND_SEEK_TO_NEXT)
                 .add(Player.COMMAND_SEEK_TO_PREVIOUS)
                 .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                 .build()
-            return MediaSession.ConnectionResult.accept(availableSessionCommands.build(), playerCommands)
+            // Include the custom layout so Android Auto receives it on connect
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(availableSessionCommands)
+                .setAvailablePlayerCommands(playerCommands)
+                .setCustomLayout(ImmutableList.of(buildVideoToggleButton()))
+                .build()
         }
 
         @OptIn(UnstableApi::class)
@@ -464,7 +471,8 @@ class PlaybackService : MediaLibraryService() {
                     if (isVideoModeEnabled != newValue) {
                         isVideoModeEnabled = newValue
                         refreshCurrentItem()
-                        mediaLibrarySession?.setCustomLayout(listOf(buildVideoToggleButton()))
+                        // Use session parameter (guaranteed non-null) to update the button icon
+                        session.setCustomLayout(listOf(buildVideoToggleButton()))
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -534,19 +542,21 @@ class PlaybackService : MediaLibraryService() {
         val current = player.currentMediaItem ?: return
         val position = player.currentPosition
         val index = player.currentMediaItemIndex
-        serviceScope.launch(Dispatchers.IO) {
-            val streamUrl = if (isVideoModeEnabled) {
-                youtubeRepo.getVideoStreamUrl(current.mediaId)
-            } else {
-                youtubeRepo.getAudioStreamUrl(current.mediaId)
-            }
-            streamUrl?.let { url ->
-                val newItem = current.buildUpon().setUri(Uri.parse(url)).build()
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    player.replaceMediaItem(index, newItem)
-                    player.seekTo(position)
-                }
-            }
+        // Capture before entering coroutine so metadata is never lost
+        val mediaId = current.mediaId
+        val savedMetadata = current.mediaMetadata
+        serviceScope.launch {
+            val streamUrl = withContext(Dispatchers.IO) {
+                if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(mediaId)
+                else youtubeRepo.getAudioStreamUrl(mediaId)
+            } ?: return@launch
+            val newItem = MediaItem.Builder()
+                .setMediaId(mediaId)
+                .setUri(Uri.parse(streamUrl))
+                .setMediaMetadata(savedMetadata)
+                .build()
+            player.replaceMediaItem(index, newItem)
+            player.seekTo(position)
         }
     }
 
