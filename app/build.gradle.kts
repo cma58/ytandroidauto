@@ -22,24 +22,9 @@ android {
         versionName = System.getenv("VERSION_CODE") ?: "1"
     }
 
-    signingConfigs {
-        create("release") {
-            val keystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
-            if (!keystorePath.isNullOrEmpty()) {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
-                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
-                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
-                storeType = "PKCS12"
-            }
-        }
-    }
-
     buildTypes {
         debug {
-            // Use consistent signing key when available so OTA updates install cleanly
-            val cfg = signingConfigs.getByName("release")
-            if (cfg.storeFile?.exists() == true) signingConfig = cfg
+            // Debug builds use Android's default debug keystore — always works
         }
         release {
             isMinifyEnabled = false
@@ -47,8 +32,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            val cfg = signingConfigs.getByName("release")
-            if (cfg.storeFile?.exists() == true) signingConfig = cfg
         }
     }
 
