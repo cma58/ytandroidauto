@@ -11,6 +11,9 @@ interface RecentTrackDao {
     @Query("SELECT * FROM recent_tracks ORDER BY lastPlayedAt DESC LIMIT 50")
     suspend fun getAllRecentTracksOnce(): List<RecentTrack>
 
+    @Query("SELECT * FROM recent_tracks WHERE videoUrl = :videoUrl LIMIT 1")
+    suspend fun getByUrl(videoUrl: String): RecentTrack?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecentTrack(track: RecentTrack): Long
 

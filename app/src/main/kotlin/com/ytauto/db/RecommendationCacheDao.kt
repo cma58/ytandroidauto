@@ -19,4 +19,7 @@ interface RecommendationCacheDao {
 
     @Query("SELECT COUNT(*) FROM recommendation_cache")
     suspend fun getCount(): Int
+
+    @Query("SELECT * FROM recommendation_cache WHERE videoUrl = :videoUrl LIMIT 1")
+    suspend fun getByUrl(videoUrl: String): RecommendationCache?
 }

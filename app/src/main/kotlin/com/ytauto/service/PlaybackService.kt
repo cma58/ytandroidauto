@@ -346,13 +346,15 @@ class PlaybackService : MediaLibraryService() {
                             topArtists.forEach { artistCount ->
                                 artistCount.artist?.let { artistName ->
                                     val results = youtubeRepo.search(artistName, maxResults = 3)
+                                    searchResultsCache[artistName] = results // enrich lookup later
                                     recommendations.addAll(results.map { it.toMediaItem() })
                                 }
                             }
-                            
+
                             // If no analytics yet, show some defaults or empty
                             if (recommendations.isEmpty()) {
                                 val results = youtubeRepo.search("Trending Music", maxResults = 10)
+                                searchResultsCache["Trending Music"] = results
                                 recommendations.addAll(results.map { it.toMediaItem() })
                             }
 
@@ -411,7 +413,6 @@ class PlaybackService : MediaLibraryService() {
                     val offlineDao = db.offlineTrackDao()
                     val deferredItems = mediaItems.map { item ->
                         async(Dispatchers.IO) {
-                            // Handle potential search query from Voice Assistant
                             val searchQuery = item.requestMetadata.searchQuery
                             val mediaItemToResolve = if (!searchQuery.isNullOrEmpty()) {
                                 val searchResults = youtubeRepo.search(searchQuery, maxResults = 1)
@@ -422,12 +423,19 @@ class PlaybackService : MediaLibraryService() {
 
                             if (mediaItemToResolve == null) return@async null
 
-                            val offlineTrack = offlineDao.getTrackByUrl(mediaItemToResolve.mediaId)
-                            if (offlineTrack != null && java.io.File(offlineTrack.localPath).exists()) {
-                                return@async mediaItemToResolve.buildUpon().setUri(Uri.fromFile(java.io.File(offlineTrack.localPath))).build()
+                            // Android Auto sends items back with only mediaId; re-attach metadata from DB/cache
+                            val enriched = if (mediaItemToResolve.mediaMetadata.title == null) {
+                                enrichWithMetadata(mediaItemToResolve, db)
+                            } else {
+                                mediaItemToResolve
                             }
-                            val streamUrl = if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(mediaItemToResolve.mediaId) else youtubeRepo.getAudioStreamUrl(mediaItemToResolve.mediaId)
-                            streamUrl?.let { mediaItemToResolve.buildUpon().setUri(Uri.parse(it)).build() }
+
+                            val offlineTrack = offlineDao.getTrackByUrl(enriched.mediaId)
+                            if (offlineTrack != null && java.io.File(offlineTrack.localPath).exists()) {
+                                return@async enriched.buildUpon().setUri(Uri.fromFile(java.io.File(offlineTrack.localPath))).build()
+                            }
+                            val streamUrl = if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(enriched.mediaId) else youtubeRepo.getAudioStreamUrl(enriched.mediaId)
+                            streamUrl?.let { enriched.buildUpon().setUri(Uri.parse(it)).build() }
                         }
                     }
                     future.set(deferredItems.awaitAll().filterNotNull())
@@ -491,6 +499,34 @@ class PlaybackService : MediaLibraryService() {
             }
             return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
         }
+    }
+
+    private suspend fun enrichWithMetadata(item: MediaItem, db: AppDatabase): MediaItem {
+        val id = item.mediaId
+        fun build(title: String, artist: String, thumb: String?) =
+            item.buildUpon().setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title).setArtist(artist)
+                    .setArtworkUri(thumb?.let { Uri.parse(it) })
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .build()
+            ).build()
+
+        // 1. In-memory search cache (fastest, no IO)
+        searchResultsCache.values.flatten().find { it.videoUrl == id }
+            ?.let { return build(it.title, it.artist, it.thumbnailUrl) }
+        // 2. Recent tracks
+        db.recentTrackDao().getByUrl(id)
+            ?.let { return build(it.title, it.artist, it.thumbnailUrl) }
+        // 3. Offline tracks
+        db.offlineTrackDao().getTrackByUrl(id)
+            ?.let { return build(it.title, it.artist, it.thumbnailUrl) }
+        // 4. Recommendation cache
+        db.recommendationCacheDao().getByUrl(id)
+            ?.let { return build(it.title, it.artist, it.thumbnailUrl) }
+
+        return item
     }
 
     private fun setBassBoost(strength: Int) {
