@@ -26,11 +26,15 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: List APK outputs (debug)
+        run: find app/build/outputs/apk -name "*.apk" 2>/dev/null || echo "No APK files found"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
+          name: LibreTube-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
