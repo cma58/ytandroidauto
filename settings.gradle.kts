@@ -1,24 +1,28 @@
-// settings.gradle.kts
 pluginManagement {
     repositories {
+        gradlePluginPortal()
         google()
         mavenCentral()
-        gradlePluginPortal()
     }
-}
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google()
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
         mavenCentral()
-        // JitPack is vereist voor NewPipe Extractor
-        maven { url = uri("https://jitpack.io") }
+        maven("https://jitpack.io")
+        mavenLocal()
     }
 }
 
-rootProject.name = "YTAuto"
+rootProject.name = "LibreTube"
+
 include(":app")
+include(":baselineprofile")

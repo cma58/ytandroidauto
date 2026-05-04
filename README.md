@@ -1,160 +1,183 @@
-# YTAuto – De Ultieme YouTube Media-ervaring voor Android Auto
+<div align="center">
+  <img src="assets/banners/gh-banner.png" width="auto" height="auto" alt="LibreTube">
 
-YTAuto is een geavanceerde, privé Android-applicatie die YouTube-content naar je auto brengt met een focus op audio-kwaliteit, gebruiksgemak en slimme functies. In tegenstelling tot standaardoplossingen biedt YTAuto volledige controle over je luisterervaring, inclusief video-ondersteuning en systeem-hacks.
+[![GPL-v3](assets/widgets/license-widget.svg)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+</div><div align="center" style="width:100%; display:flex; justify-content:space-between;">
 
----
+[![Matrix](assets/widgets/mat-widget.svg)](https://matrix.to/#/#LibreTube:matrix.org)
+[![Mastodon](assets/widgets/mast-widget.svg)](https://fosstodon.org/@libretube)
+[![Lemmy](assets/widgets/lemmy-widget.svg)](https://feddit.rocks/c/libretube)
 
-## Functies
+</div>
 
-### YouTube Audio & Video
-Speel elk YouTube-nummer af als pure audio of als volledige video. In **audio-modus** wordt alleen de geluidsstroom gedownload — dit spaart mobiele data en batterij. In **video-modus** wordt de volledige videostream afgespeeld, zichtbaar op je telefoonscherm of op de head-unit van je auto. Schakel tussen beide modi via de video/audio-knop in de Now Playing balk — de app herlaadt de stream automatisch zonder het nummer opnieuw te starten.
+> **Note** <br>
+> We don't accept feature or bug requests on these platforms. Kindly submit requests only on GitHub.
 
----
+</div><div align="center" style="width:100%; display:flex; justify-content:space-between;">
 
-### Android Auto Integratie
-YTAuto verschijnt als een volwaardige media-app in Android Auto. Vanuit het autodisplay kun je:
-- Bladeren door **4 categorieën**: Recent gespeeld, Speciaal voor Jou, Zoekresultaten en Offline Bibliotheek.
-- Nummers starten via de **spraakassistent** ("Speel [artiest] af").
-- De standaard **Now Playing controls** gebruiken: play/pause, volgend nummer, vorig nummer.
-- Wisselen tussen **audio en video** via een extra knop naast de standaardknoppen.
+[<img src="assets/badges/fdrload.png" alt="Get it on F-Droid" width="30%">](https://f-droid.org/en/packages/com.github.libretube/)
+[<img src="assets/badges/izzyload.png" alt="Get it on IzzyOnDroid" width="30%">](https://apt.izzysoft.de/fdroid/index/apk/com.github.libretube)<br/>
+[<img src="assets/badges/ghload.png" alt="Get it on GitHub" width="30%">](https://github.com/libre-tube/LibreTube/releases/latest)
 
----
+</div>
 
-### Offline Bibliotheek
-Download elk nummer naar de interne opslag van je telefoon zodat het afspeelt zonder internetverbinding — ideaal voor slecht bereik of data-besparing. Gedownloade nummers worden opgeslagen als M4A-audiobestand en zijn terug te vinden in de **Bibliotheek**-tab. De app houdt bij hoe vaak je elk nummer hebt afgespeeld en markeert favorieten.
+<details>
+  <summary>📜️ Credits</summary>
 
----
+<sub>Readme Design and Banners by [XelXen](https://github.com/XelXen)</sub> <br>
+<sub>Readme Screenshots by [ARBoyGo](https://github.com/ARBoyGo)</sub> <br>
+<sub>Readme Emoji is from [openmoji](https://openmoji.org)</sub>
 
-### Smart Auto-Sync
-De app kan automatisch nieuwe nummers downloaden op de achtergrond. Het systeem kijkt naar je opgeslagen nummers, pikt een willekeurige artiest eruit en zoekt 5 nieuwe gerelateerde tracks die het dan downloadt. Dit proces draait **alleen via Wi-Fi** en wordt elke 6 uur herhaald. De functie is aan/uit te zetten in Instellingen en de keuze wordt permanent opgeslagen.
+  <summary>Icons</summary>
 
----
+<sub>[Default App Icon](https://github.com/libre-tube/LibreTube/blob/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png) by [XelXen](https://github.com/XelXen)</sub> <br>
+<sub>[Boosted Bird](https://github.com/libre-tube/LibreTube/blob/master/app/src/main/res/mipmap-xxxhdpi/ic_bird_round.png) by [Margot Albert-Heuzey](https://margotdesign.ovh)</sub>
 
-### AI-Aanbevelingen — "Speciaal voor Jou"
-Elke keer dat je een nummer afspeelt, slaat de app dit op als een afspeelgebeurtenis. Op basis van je **top 5 meest beluisterde artiesten** worden automatisch YouTube-zoekopdrachten uitgevoerd en de resultaten getoond in de "Speciaal voor Jou" sectie in Android Auto. Hoe meer je luistert, hoe persoonlijker de aanbevelingen worden. Afspeelgeschiedenis is te wissen via Instellingen.
+</details>
 
----
+<h2 align="left">
+<sub>
+<img  src="assets/readme/about.svg"
+      height="30"
+      width="30">
+</sub>
+About
+</h2>
 
-### Pro Audio Engine
+YouTube has an extremely invasive [privacy policy](https://support.google.com/youtube/answer/10364219) which relies on using user data in unethical ways. They store a lot of your personal data - ranging from ideas, music taste, content, political opinions, and much more than you think.
 
-#### 5-Bands Equalizer
-Pas de klank van het geluid aan met 5 frequentiebanden:
-- **Band 0** — 60 Hz (diepe bas)
-- **Band 1** — 230 Hz (warme bas)
-- **Band 2** — 910 Hz (middentonen / stem)
-- **Band 3** — 3,6 kHz (aanwezigheid)
-- **Band 4** — 14 kHz (helderheid / lucht)
+This project is aimed at improving the users' privacy by being independent from Google and bypassing their data collection.
 
-Kies uit vooringestelde presets (**Standard**, **Bass Max**, **Vocal**, **Flat**) of stel elke band handmatig in via de schuifjes in Instellingen.
+Therefore, the app is using the [Piped API](https://github.com/TeamPiped/Piped), which uses proxies to circumvent Google's data collection and includes some other additional features.
 
-#### Bass Boost
-Versterkt de lage tonen extra hard via de hardware-audioproccessor van je telefoon. Speciaal afgesteld voor auto-luidsprekers die van nature minder bas produceren dan thuisluidsprekers.
+If you have questions or need help, please make sure to read the [FAQ](https://libre-tube.github.io/#faq) before asking for help at the community channels. The [Matrix room](https://matrix.to/#/#LibreTube:matrix.org) is considered as the main communication channel, all other forums or social media accounts are maintained by volunteers from the community but not the developer(s).
 
-#### Loudness Enhancer
-Verhoogt het algemene volume met 15 dB zonder vervorming. Nuttig omdat YouTube-video's onderling sterk kunnen verschillen in volume — dit equaliseert het verschil automatisch.
+<h2 align="left">
+<sub>
+<img  src="assets/readme/phone.svg"
+      height="30"
+      width="30">
+</sub>
+Screenshots
+</h2>
 
-#### Crossfade
-Aan het einde van elk nummer begint het volgende nummer zacht in te faden terwijl het huidige uitfadet. Dit zorgt voor een vloeiende luisterervaring zonder stiltes tussen nummers.
+<div style="width:100%; display:flex; justify-content:space-between;">
 
----
+[<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_1.jpg" width=19% alt="Home">](fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_1.jpg)
+[<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_2.jpg" width=19% alt="Home">](fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_2.jpg)
+[<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_3.jpg" width=19% alt="Subscriptions">](fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_3.jpg)
+[<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_4.jpg" width=19% alt="Library">](fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_4.jpg)
+[<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_9.jpg" width=19% alt="Channel Overview">](fastlane/metadata/android/en-US/images/phoneScreenshots/Screenshot_9.jpg)
 
-### SponsorBlock
-YouTube-muziekvideo's bevatten vaak intro's, outro's of gesproken stukken die niet bij de muziek horen. SponsorBlock is een open-source database van vrijwilligers die deze segmenten markeren. YTAuto haalt deze data automatisch op en **slaat de gemarkeerde stukken over** tijdens het afspelen. De functie is aan/uit te zetten in Instellingen en de keuze wordt opgeslagen zodat je hem niet telkens opnieuw hoeft in te stellen.
+* More screenshots can be found [here](https://github.com/libre-tube/LibreTube/blob/master/SCREEN_SHOT.md)
 
----
+</div>
 
-### Systeem Hacks via Shizuku
+<h2 align="left">
+<sub>
+<img  src="assets/readme/feature.svg"
+      height="30"
+      width="30">
+</sub>
+Features
+</h2>
 
-#### Wat is Shizuku?
-Shizuku is een app die je telefoon tijdelijk ADB-rechten geeft zonder root. Dit geeft YTAuto toegang tot systeeminstellingen die normaal niet toegankelijk zijn.
+- [x] No Ads or Tracking
+- [x] Subscriptions
+- [x] Subscription Groups
+- [x] User Playlists
+- [x] Playlist Bookmarks
+- [x] Watch/Search History
+- [x] Downloads
+- [x] Background playback
+- [x] User Accounts via [Piped](https://github.com/TeamPiped/Piped) (optional)
+- [x] [SponsorBlock](https://sponsor.ajay.app/) - skip sponsored segments in videos
+- [x] [ReturnYouTubeDislike](https://www.returnyoutubedislike.com/) - provides video dislike statistics
+- [x] [DeArrow](https://dearrow.ajay.app/) - provides better titles and thumbnails
 
-#### Rij-restricties uitschakelen
-Android Auto blokkeert bepaalde functies (zoals typen of video kijken) wanneer het detecteert dat de auto rijdt. Via Shizuku kan YTAuto deze beperkingen omzeilen zodat je de volledige interface behoudt tijdens het rijden.
+<h2 align="left">
+<sub>
+<img  src="assets/readme/community.svg"
+      height="30"
+      width="30">
+</sub>
+Contributing
+</h2>
 
-#### Whitelist injectie
-Android Auto heeft een interne lijst van goedgekeurde apps. Via Shizuku injecteert YTAuto zichzelf in de Google Play Services database zodat Android Auto de app altijd accepteert, ook na updates.
+Whether you have ideas, translations, design changes, code cleaning or really heavy code changes, help is always welcome. The more is done, the better it gets! Please respect our [Code of Conduct](https://github.com/libre-tube/LibreTube/blob/master/CODE_OF_CONDUCT.md) in order to keep all interactions and discussions healthy.
 
-> Shizuku is optioneel. De app werkt volledig zonder Shizuku, maar zonder deze hacks kunnen sommige Android Auto functies beperkt zijn.
+You can open and build the project like any other normal Android project by using Android Studio.
 
----
+Please make sure the title of your pull request and the commit messages follow the [conventional commit types](https://github.com/commitizen/conventional-commit-types/blob/master/index.json) (e.g. `feat: support for xy`).
+For instance, the most common commit types are "feat", "fix", "refactor", "ci" and "chore".
 
-### Share-to-Car
-Deel een link vanuit **elke andere app** direct naar YTAuto:
-1. Open een YouTube-video of Spotify-nummer in de bijbehorende app.
-2. Tik op **Delen** en kies **YTAuto**.
-3. De app zoekt het nummer automatisch op en start het afspelen.
+> [!NOTE]
+> Any issue avoiding the issue template will be ignored and forced to be closed.
 
-Voor Spotify-links extraheert de app de songtitel uit de webpagina en zoekt het equivalent op YouTube.
+> [!NOTE]
+> The usage of AI to generate issue texts or pull requests is not permitted at this repository and thus such issues / pull requests will be ignored.
 
----
+<h2 align="left">
+<sub>
+<img  src="assets/readme/donate.svg"
+      height="30"
+      width="30">
+</sub>
+Donate
+</h2>
 
-### Party Mode
-Party Mode zet je telefoon om in een mini-webserver. Passagiers in de auto kunnen via hun eigen telefoon — verbonden met hetzelfde Wi-Fi of hotspot — nummers toevoegen aan de wachtrij zonder dat ze de app nodig hebben.
+Donations can be made at:
+* <https://github.com/sponsors/Bnyro>
+* <https://liberapay.com/Bnyro>
+* Monero (XMR): 47jAx7jMFo5iqy9VgDH98qL1bSK4kr6Pxi7HKWcRwsxbVYJdjxJtyrwXeAUa5MutvcQUmWMBfvAKnPAutDHvWEymUgLm5v8
+* Ethereum (ETH): 0x599909f54CdC18B997Be8F032341d1Fb14BF4F39
 
-**Hoe het werkt:**
-1. Open **Instellingen** in YTAuto.
-2. Onder "Party Mode" zie je een URL zoals `http://192.168.1.100:8080`.
-3. Kopieer de URL en stuur hem naar je passagiers (WhatsApp, etc.).
-4. Passagiers openen de URL in hun browser en plakken een YouTube- of Spotify-link in.
-5. Het nummer wordt direct toegevoegd aan de wachtrij in jouw auto.
+Contributions in any form are welcome!
 
----
+<h2 align="left">
+📝 Translations
+</h2>
 
-## Architectuur
+<a href="https://hosted.weblate.org/projects/libretube/#languages">
+<img src="https://hosted.weblate.org/widgets/libretube/-/287x66-grey.png" alt="Translation status" />
+</a>
 
-| Laag | Technologie |
-|------|------------|
-| UI | Jetpack Compose + Material 3 |
-| Media | Media3 (ExoPlayer & MediaLibrarySession) |
-| Data | NewPipe Extractor — privacy-vriendelijke YouTube toegang zonder API-sleutel |
-| Database | Room v4 — offline tracks, afspeelgeschiedenis, analytics |
-| Instellingen | DataStore Preferences — SponsorBlock en Auto-Sync worden persistent opgeslagen |
-| Achtergrond | WorkManager — Wi-Fi-only Smart Sync elke 6 uur |
-| Systeem | Shizuku API voor ADB-niveau modificaties |
+<h2 align="left">
+<sub>
+<img  src="assets/readme/ltvnp.svg"
+      height="30"
+      width="30">
+</sub>
+Differences to NewPipe
+</h2>
 
----
+With LibreTube, you have the choice to either send all requests directly to YouTube or proxy them via Piped for better privacy. Piped acts as a middleman server between you and YouTube in this case, which prevents YouTube from accessing personal information such as your IP address. 
+Additionally, using Piped allows you to sync your subscriptions between LibreTube and Piped, which can be used on desktop too.
 
-## Vereisten
+While LibreTube only supports YouTube, NewPipe also allows the use of other platforms like SoundCloud, PeerTube, Bandcamp and media.ccc.de.<br>
+Both are great clients for watching YouTube videos. It depends on the individual's use case which one fits their needs better.
 
-- Android **SDK 26+** (target SDK 36 / Android 16)
-- Android Studio **Ladybug (2024.2+)** of hoger
-- Shizuku-app *(optioneel — voor rij-restrictie hacks)*
+<h2 align="left">
+<sub>
+<img  src="assets/readme/privacy.svg"
+      height="30"
+      width="30">
+</sub>
+Privacy Policy and Disclaimer
+</h2>
 
----
 
-## Installatie & Build
+LibreTube aims to protect the privacy of its users. [Our Privacy Policy](/PRIVACY_POLICY.md) gives detailed information on which data the app stores in order to work, how it is being used, and how the project protects your personal information. It is recommended to read the privacy policy of LibreTube as well as the privacy policy of the instance you have chosen inside the app.
 
-```bash
-# 1. Clone de repository
-git clone https://github.com/cma58/ytandroidauto.git
-cd ytandroidauto
+## License
+[![GNU GPLv3 Image](https://www.gnu.org/graphics/gplv3-127x51.png)](http://www.gnu.org/licenses/gpl-3.0.en.html)
 
-# 2. Build debug APK
-./gradlew assembleDebug
+LibreTube is [Free Software](https://en.wikipedia.org/wiki/Free_software): You can use, study, share and modify it at your will. The app can be redistributed and/or modified under the terms of the
+[GNU General Public License version 3 or later](https://www.gnu.org/licenses/gpl.html) published by the 
+[Free Software Foundation](https://www.fsf.org/).
 
-# APK staat op: app/build/outputs/apk/debug/app-debug.apk
-
-# 3. Installeer op verbonden toestel
-./gradlew installDebug
-```
-
-Of open het project in **Android Studio** en druk op de groene ▶ knop.
-
----
-
-## Eerste gebruik
-
-1. Start de app en open **Instellingen**
-2. *(Optioneel)* Start Shizuku en druk op **"Injecteer in Android Auto"** voor volledige toegang
-3. Verbind je telefoon met Android Auto
-4. Zoek een nummer in de app of in Android Auto via de zoekfunctie
-5. Gebruik de **video/audio-knop** in de Now Playing balk om te wisselen tussen streams
-
----
-
-## ⚠️ Belangrijk
-
-YTAuto is een **educatief project** en is niet bedoeld voor distributie via de Google Play Store. De app maakt gebruik van reverse-engineered API's via NewPipe; gebruik is op eigen risico.
-
----
-*Ontwikkeld voor de ultieme roadtrip.*
+<div align="right">
+<table><td>
+<a href="#start-of-content">↥ Scroll to top</a>
+</td></table>
+</div>

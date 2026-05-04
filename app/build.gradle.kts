@@ -1,128 +1,185 @@
-// app/build.gradle.kts
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("kotlin-kapt")
+    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.androidx.navigation.safeargs)
+    alias(libs.plugins.baselineprofile)
+    alias(libs.plugins.ksp)
+}
+
+/*
+'keystore.properties' should look like the following:
+
+storeFile=my.keystore
+storePassword=my_store_password
+keyAlias=my_key_alias
+keyPassword=my_key_password
+ */
+
+val keystoreProperties = Properties()
+val keystoreFileExists = rootProject.file("keystore.properties").exists();
+if (keystoreFileExists) {
+    keystoreProperties.load(rootProject.file("keystore.properties").inputStream())
 }
 
 android {
-    namespace = "com.ytauto"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.ytauto"
+        applicationId = "com.github.libretube"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 67
+        versionName = "31.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        resValue("string", "app_name", "LibreTube")
+    }
+
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+        arg("exportSchema", "true")
+    }
+
+    viewBinding {
+        enable = true
+    }
+
+    signingConfigs {
+        if (keystoreFileExists) {
+            create("release") {
+                storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
     }
 
     buildTypes {
-        release {
-            isMinifyEnabled = false
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release")?.takeIf { it.storeFile != null }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+
+        getByName("debug") {
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "LibreTube Debug")
+        }
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    buildFeatures {
-        compose = true
+    kotlin {
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_17
+            javaParameters = true
+        }
     }
 
     packaging {
-        resources {
-            excludes += "/META-INF/INDEX.LIST"
-            excludes += "/META-INF/io.netty.versions.properties"
-        }
+        jniLibs.excludes.add("lib/armeabi-v7a/*_neon.so")
     }
+
+    tasks.register("testClasses")
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
+    buildFeatures {
+        buildConfig = true
+        resValues = true
+    }
+
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs.
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles.
+        includeInBundle = false
+    }
+
+    // language preference for Android 13 and above
+    androidResources {
+        generateLocaleConfig = true
+    }
+
+    namespace = "com.github.libretube"
 }
 
 dependencies {
-    // ── AndroidX Media3 (de ENIGE media-bibliotheek die we gebruiken) ──
-    val media3Version = "1.5.1"
-    implementation("androidx.media3:media3-exoplayer:$media3Version")
-    implementation("androidx.media3:media3-session:$media3Version")
-    implementation("androidx.media3:media3-ui:$media3Version")
-    // DASH/HLS ondersteuning (optioneel, maar handig voor sommige streams)
-    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    /* Android Core */
+    implementation(libs.androidx.activity)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.core)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.fragment)
+    implementation(libs.androidx.navigation.fragment)
+    implementation(libs.androidx.navigation.ui)
+    implementation(libs.androidx.preference)
+    implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.collection)
+    implementation(libs.androidx.media)
+    implementation(libs.androidx.swiperefreshlayout)
 
-    // ── Jetpack Compose ──
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
-    implementation(composeBom)
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material:material-icons-extended")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    /* Android Lifecycle */
+    implementation(libs.lifecycle.viewmodel)
+    implementation(libs.lifecycle.runtime)
+    implementation(libs.lifecycle.livedata)
+    implementation(libs.lifecycle.service)
 
-    // ── Afbeeldingen laden (thumbnails) ──
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    /* Design */
+    implementation(libs.material)
 
-    // ── Coroutines ──
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
+    /* ExoPlayer */
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.exoplayer.dash)
+    implementation(libs.androidx.media3.session)
 
-    // ── NewPipe Extractor (YouTube scraper) ──
-    // Gebruik de officiële TeamNewPipe repository voor stabiliteit.
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
+    /* Retrofit and Kotlinx Serialization */
+    implementation(libs.square.retrofit)
+    implementation(libs.logging.interceptor)
+    implementation(libs.kotlinx.serialization)
+    implementation(libs.kotlinx.datetime)
+    implementation(libs.converter.kotlinx.serialization)
 
-    // ── OkHttp (voor de NewPipe Downloader implementatie) ──
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    /* NewPipe Extractor */
+    implementation(libs.newpipeextractor)
 
-    // ── AndroidX Core ──
-    implementation("androidx.core:core-ktx:1.15.0")
 
-    // ── DataStore (persistente instellingen) ──
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    /* Coil */
+    coreLibraryDesugaring(libs.desugaring)
+    implementation(libs.coil)
+    implementation(libs.coil.network.okhttp)
 
-    // ── Android Car App Library (voor de Video-Hack) ──
-    // app-automotive is ALLEEN voor Automotive OS. Voor telefoon + Android Auto projectie:
-    val carAppVersion = "1.7.0"
-    implementation("androidx.car.app:app:$carAppVersion")
-    implementation("androidx.car.app:app-projected:$carAppVersion")
+    /* Room */
+    ksp(libs.room.compiler)
+    implementation(libs.room)
 
-    // ── Palette API ──
-    implementation("androidx.palette:palette-ktx:1.0.0")
+    /* Baseline profile generation */
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
 
-    // ── WorkManager (voor Offline Sync) ──
-    val workVersion = "2.10.0"
-    implementation("androidx.work:work-runtime-ktx:$workVersion")
+    /* AndroidX Paging */
+    implementation(libs.androidx.paging)
 
-    // ── Room (Database voor Offline Tracks) ──
-    val roomVersion = "2.7.0-alpha11"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    // Gebruik KSP voor Room (als KSP is geconfigureerd) of kapt
-    // Voor nu voegen we kapt toe voor eenvoudige compatibiliteit
-    kapt("androidx.room:room-compiler:$roomVersion")
-
-    // ── Guava (voor ListenableFuture in Media3 callbacks) ──
-    implementation("com.google.guava:guava:33.3.1-android")
-
-    // ── Ktor (voor de Gast Casting Webserver) ──
-    val ktorVersion = "2.3.12"
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
-
-    // ── Shizuku (voor diepe systeemtoegang zonder root) ──
-    val shizukuVersion = "13.1.0"
-    implementation("dev.rikka.shizuku:api:$shizukuVersion")
-    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
+    /* Testing */
+    testImplementation(libs.junit)
 }
