@@ -1,33 +1,81 @@
-// app/build.gradle.kts
+/*
+ * SPDX-FileCopyrightText: 2025 NewPipe e.V. <https://newpipe-ev.de>
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import com.android.build.api.dsl.ApplicationExtension
+
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.devtools.ksp")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.jetbrains.kotlin.android)
+    alias(libs.plugins.jetbrains.kotlin.kapt)
+    alias(libs.plugins.google.ksp)
+    alias(libs.plugins.jetbrains.kotlin.parcelize)
+    alias(libs.plugins.jetbrains.kotlinx.serialization)
+    alias(libs.plugins.sonarqube)
+    checkstyle
 }
+
+val gitWorkingBranch = providers.exec {
+    commandLine("git", "rev-parse", "--abbrev-ref", "HEAD")
+}.standardOutput.asText.map { it.trim() }
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        // TODO: Drop annotation default target when it is stable
+        freeCompilerArgs.addAll(
+            "-Xannotation-default-target=param-property"
+        )
+    }
 }
 
-android {
-    namespace = "com.ytauto"
-    compileSdk = 35
+configure<ApplicationExtension> {
+    compileSdk = 36
+    namespace = "org.schabi.newpipe"
 
     defaultConfig {
-        applicationId = "com.ytauto"
-        minSdk = 26
+        applicationId = "org.schabi.newpipe"
+        resValue("string", "app_name", "NewPipe")
+        minSdk = 23
         targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE")?.toIntOrNull()) ?: 1
-        versionName = System.getenv("VERSION_CODE") ?: "1"
+
+        versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: 1011
+
+        versionName = "0.28.6"
+        System.getProperty("versionNameSuffix")?.let { versionNameSuffix = it }
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         debug {
-            // Debug builds use Android's default debug keystore — always works
+            isDebuggable = true
+
+            // suffix the app id and the app name with git branch name
+            val defaultBranches = listOf("master", "dev")
+            val workingBranch = gitWorkingBranch.getOrElse("")
+            val normalizedWorkingBranch = workingBranch
+                .replaceFirst("^[^A-Za-z]+".toRegex(), "")
+                .replace("[^0-9A-Za-z]+".toRegex(), "")
+
+            if (normalizedWorkingBranch.isEmpty() || workingBranch in defaultBranches) {
+                // default values when branch name could not be determined or is master or dev
+                applicationIdSuffix = ".debug"
+                resValue("string", "app_name", "NewPipe Debug")
+            } else {
+                applicationIdSuffix = ".debug.$normalizedWorkingBranch"
+                resValue("string", "app_name", "NewPipe $workingBranch")
+            }
         }
+
         release {
-            isMinifyEnabled = false
+            System.getProperty("packageSuffix")?.let { suffix ->
+                applicationIdSuffix = suffix
+                resValue("string", "app_name", "NewPipe $suffix")
+            }
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -35,100 +83,229 @@ android {
         }
     }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+    lint {
+        lintConfig = file("lint.xml")
+        // Continue the debug build even when errors are found
+        abortOnError = false
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    compileOptions {
+        // Flag to enable support for the new language APIs
+        isCoreLibraryDesugaringEnabled = true
+        encoding = "utf-8"
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            assets.directories += "$projectDir/schemas"
+        }
+    }
+
+    androidResources {
+        generateLocaleConfig = true
     }
 
     buildFeatures {
-        compose = true
+        viewBinding = true
         buildConfig = true
+        resValues = true
     }
 
     packaging {
         resources {
-            excludes += "/META-INF/INDEX.LIST"
-            excludes += "/META-INF/io.netty.versions.properties"
+            // remove two files which belong to jsoup
+            // no idea how they ended up in the META-INF dir...
+            excludes += setOf(
+                "META-INF/README.md",
+                "META-INF/CHANGES",
+                "META-INF/COPYRIGHT" // "COPYRIGHT" belongs to RxJava...
+            )
         }
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+
+// Custom dependency configuration for ktlint
+val ktlint by configurations.creating
+
+checkstyle {
+    configDirectory = rootProject.file("checkstyle")
+    isIgnoreFailures = false
+    isShowViolations = true
+    toolVersion = libs.versions.checkstyle.get()
+}
+
+tasks.register<Checkstyle>("runCheckstyle") {
+    source("src")
+    include("**/*.java")
+    exclude("**/gen/**")
+    exclude("**/R.java")
+    exclude("**/BuildConfig.java")
+    exclude("main/java/us/shandian/giga/**")
+
+    classpath = configurations.getByName("checkstyle")
+
+    isShowViolations = true
+
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+val outputDir = project.layout.buildDirectory.dir("reports/ktlint/")
+val inputFiles = fileTree("src") { include("**/*.kt") }
+
+tasks.register<JavaExec>("runKtlint") {
+    inputs.files(inputFiles)
+    outputs.dir(outputDir)
+    mainClass.set("com.pinterest.ktlint.Main")
+    classpath = configurations.getByName("ktlint")
+    args = listOf("--editorconfig=../.editorconfig", "src/**/*.kt")
+    jvmArgs = listOf("--add-opens", "java.base/java.lang=ALL-UNNAMED")
+}
+
+tasks.register<JavaExec>("formatKtlint") {
+    inputs.files(inputFiles)
+    outputs.dir(outputDir)
+    mainClass.set("com.pinterest.ktlint.Main")
+    classpath = configurations.getByName("ktlint")
+    args = listOf("--editorconfig=../.editorconfig", "-F", "src/**/*.kt")
+    jvmArgs = listOf("--add-opens", "java.base/java.lang=ALL-UNNAMED")
+}
+
+tasks.register<CheckDependenciesOrder>("checkDependenciesOrder") {
+    tomlFile = layout.projectDirectory.file("../gradle/libs.versions.toml")
+}
+
+afterEvaluate {
+    tasks.named("preDebugBuild").configure {
+        if (!System.getProperties().containsKey("skipFormatKtlint")) {
+            dependsOn("formatKtlint")
+        }
+        dependsOn("runCheckstyle", "runKtlint", "checkDependenciesOrder")
+    }
+}
+
+sonar {
+    properties {
+        property("sonar.projectKey", "TeamNewPipe_NewPipe")
+        property("sonar.organization", "teamnewpipe")
+        property("sonar.host.url", "https://sonarcloud.io")
+    }
+}
+
 dependencies {
-    // ── AndroidX Media3 (de ENIGE media-bibliotheek die we gebruiken) ──
-    val media3Version = "1.5.1"
-    implementation("androidx.media3:media3-exoplayer:$media3Version")
-    implementation("androidx.media3:media3-session:$media3Version")
-    implementation("androidx.media3:media3-ui:$media3Version")
-    // DASH/HLS ondersteuning (optioneel, maar handig voor sommige streams)
-    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    /** Desugaring **/
+    coreLibraryDesugaring(libs.android.desugar)
 
-    // ── Jetpack Compose ──
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
-    implementation(composeBom)
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material:material-icons-extended")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    /** NewPipe libraries **/
+    implementation(libs.newpipe.nanojson)
+    implementation(libs.newpipe.extractor)
+    implementation(libs.newpipe.filepicker)
 
-    // ── Afbeeldingen laden (thumbnails) ──
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    /** Checkstyle **/
+    checkstyle(libs.puppycrawl.checkstyle)
+    ktlint(libs.pinterest.ktlint)
 
-    // ── Coroutines ──
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
+    /** AndroidX **/
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.cardview)
+    implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.core)
+    implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.fragment)
+    implementation(libs.androidx.lifecycle.livedata)
+    implementation(libs.androidx.lifecycle.viewmodel)
+    implementation(libs.androidx.localbroadcastmanager)
+    implementation(libs.androidx.media)
+    implementation(libs.androidx.preference)
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.rxjava3)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.swiperefreshlayout)
+    implementation(libs.androidx.viewpager2)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.work.rxjava3)
+    implementation(libs.google.android.material)
+    implementation(libs.androidx.webkit)
 
-    // ── NewPipe Extractor (YouTube scraper) ──
-    // Gebruik de officiële TeamNewPipe repository voor stabiliteit.
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
+    // Coroutines interop
+    implementation(libs.kotlinx.coroutines.rx3)
 
-    // ── OkHttp (voor de NewPipe Downloader implementatie) ──
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Kotlinx Serialization
+    implementation(libs.kotlinx.serialization.json)
 
-    // ── AndroidX Core ──
-    implementation("androidx.core:core-ktx:1.15.0")
+    /** Third-party libraries **/
+    implementation(libs.livefront.bridge)
+    implementation(libs.evernote.statesaver.core)
+    kapt(libs.evernote.statesaver.compiler)
 
-    // ── DataStore (persistente instellingen) ──
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    // HTML parser
+    implementation(libs.jsoup)
 
-    // ── Android Car App Library (voor de Video-Hack) ──
-    // app-automotive is ALLEEN voor Automotive OS. Voor telefoon + Android Auto projectie:
-    val carAppVersion = "1.7.0"
-    implementation("androidx.car.app:app:$carAppVersion")
-    implementation("androidx.car.app:app-projected:$carAppVersion")
+    // HTTP client
+    implementation(libs.squareup.okhttp)
 
-    // ── Palette API ──
-    implementation("androidx.palette:palette-ktx:1.0.0")
+    // Media player
+    implementation(libs.google.exoplayer.core)
+    implementation(libs.google.exoplayer.dash)
+    implementation(libs.google.exoplayer.database)
+    implementation(libs.google.exoplayer.datasource)
+    implementation(libs.google.exoplayer.hls)
+    implementation(libs.google.exoplayer.mediasession)
+    implementation(libs.google.exoplayer.smoothstreaming)
+    implementation(libs.google.exoplayer.ui)
 
-    // ── WorkManager (voor Offline Sync) ──
-    val workVersion = "2.10.0"
-    implementation("androidx.work:work-runtime-ktx:$workVersion")
+    // Manager for complex RecyclerView layouts
+    implementation(libs.lisawray.groupie.core)
+    implementation(libs.lisawray.groupie.viewbinding)
 
-    // ── Room (Database voor Offline Tracks) ──
-    val roomVersion = "2.7.0-alpha01"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    ksp("androidx.room:room-compiler:$roomVersion")
+    // Image loading
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
-    // ── Guava (voor ListenableFuture in Media3 callbacks) ──
-    implementation("com.google.guava:guava:33.3.1-android")
+    // Markdown library for Android
+    implementation(libs.noties.markwon.core)
+    implementation(libs.noties.markwon.linkify)
 
-    // ── Ktor (voor de Gast Casting Webserver) ──
-    val ktorVersion = "2.3.12"
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
+    // Crash reporting
+    implementation(libs.acra.core)
+    compileOnly(libs.google.autoservice.annotations)
+    ksp(libs.zacsweers.autoservice.compiler)
 
-    // ── Shizuku (voor diepe systeemtoegang zonder root) ──
-    val shizukuVersion = "13.1.5"
-    implementation("dev.rikka.shizuku:api:$shizukuVersion")
-    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
+    // Properly restarting
+    implementation(libs.jakewharton.phoenix)
+
+    // Reactive extensions for Java VM
+    implementation(libs.reactivex.rxjava)
+    implementation(libs.reactivex.rxandroid)
+    // RxJava binding APIs for Android UI widgets
+    implementation(libs.jakewharton.rxbinding)
+
+    // Date and time formatting
+    implementation(libs.ocpsoft.prettytime)
+
+    /** Debugging **/
+    // Memory leak detection
+    debugImplementation(libs.squareup.leakcanary.watcher)
+    debugImplementation(libs.squareup.leakcanary.plumber)
+    debugImplementation(libs.squareup.leakcanary.core)
+    // Debug bridge for Android
+    debugImplementation(libs.facebook.stetho.core)
+    debugImplementation(libs.facebook.stetho.okhttp3)
+
+    /** Testing **/
+    testImplementation(libs.junit)
+    testImplementation(libs.mockito.core)
+
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.runner)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.assertj.core)
 }

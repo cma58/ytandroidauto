@@ -1,15 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-    automotive_app_desc.xml
-
-    Dit bestand vertelt Android Auto welk type app dit is.
-    "media" betekent dat de app verschijnt in de mediaspeler-interface
-    van Android Auto, met browse- en zoekfunctionaliteit.
-
-    Zonder dit bestand herkent Android Auto de app NIET.
--->
 <automotiveApp>
     <uses name="media" />
-    <uses name="navigation" />
-    <uses name="template" />
 </automotiveApp>
