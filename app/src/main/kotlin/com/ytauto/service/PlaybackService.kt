@@ -426,9 +426,6 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<List<MediaItem>> {
             val future = SettableFuture.create<List<MediaItem>>()
             serviceScope.launch {
-                // Snapshot the cache here on Main before entering IO coroutines —
-                // LinkedHashMap is not thread-safe and ConcurrentModificationException
-                // inside async(IO) silently fails the whole resolution.
                 val searchSnapshot: List<SearchResult> = searchResultsCache.values.flatten()
                 try {
                     val db = AppDatabase.getDatabase(this@PlaybackService)
@@ -445,8 +442,6 @@ class PlaybackService : MediaLibraryService() {
 
                             if (mediaItemToResolve == null) return@async null
 
-                            // Android Auto strips all metadata and sends only the mediaId back.
-                            // Re-attach it from our DB/cache using the snapshot taken on Main.
                             val enriched = if (mediaItemToResolve.mediaMetadata.title == null) {
                                 enrichWithMetadata(mediaItemToResolve, db, searchSnapshot)
                             } else {
@@ -455,14 +450,36 @@ class PlaybackService : MediaLibraryService() {
 
                             val offlineTrack = offlineDao.getTrackByUrl(enriched.mediaId)
                             if (offlineTrack != null && java.io.File(offlineTrack.localPath).exists()) {
-                                return@async enriched.buildUpon().setUri(Uri.fromFile(java.io.File(offlineTrack.localPath))).build()
+                                return@async enriched.buildUpon()
+                                    .setUri(Uri.fromFile(java.io.File(offlineTrack.localPath))).build()
                             }
-                            val streamUrl = if (isVideoModeEnabled) youtubeRepo.getVideoStreamUrl(enriched.mediaId) else youtubeRepo.getAudioStreamUrl(enriched.mediaId)
-                            streamUrl?.let { enriched.buildUpon().setUri(Uri.parse(it)).build() }
+
+                            val streamUrl = if (isVideoModeEnabled)
+                                youtubeRepo.getVideoStreamUrl(enriched.mediaId)
+                            else
+                                youtubeRepo.getAudioStreamUrl(enriched.mediaId)
+
+                            if (streamUrl != null) {
+                                enriched.buildUpon().setUri(Uri.parse(streamUrl)).build()
+                            } else {
+                                // Stream URL failed — return item without URI so ExoPlayer
+                                // reports an error, which we recover from in onPlayerError.
+                                Log.w("PlaybackService", "Stream URL null for ${enriched.mediaId}")
+                                enriched
+                            }
                         }
                     }
-                    future.set(deferredItems.awaitAll().filterNotNull())
+                    val resolved = deferredItems.awaitAll().filterNotNull()
+                    future.set(resolved)
+                    // Android Auto's playFromMediaId should trigger play automatically,
+                    // but we ensure it explicitly in case the framework doesn't.
+                    if (resolved.isNotEmpty()) {
+                        delay(300)
+                        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                        if (!player.isPlaying) player.play()
+                    }
                 } catch (e: Exception) {
+                    Log.e("PlaybackService", "onAddMediaItems failed", e)
                     future.setException(e)
                 }
             }
