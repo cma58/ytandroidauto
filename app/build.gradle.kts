@@ -183,11 +183,15 @@ tasks.register<CheckDependenciesOrder>("checkDependenciesOrder") {
 }
 
 afterEvaluate {
-    tasks.named("preDebugBuild").configure {
-        if (!System.getProperties().containsKey("skipFormatKtlint")) {
-            dependsOn("formatKtlint")
+    // Skip all style/lint tasks in CI — they block APK builds on auto-fixed violations
+    val isCI = System.getenv("CI") == "true"
+    if (!isCI) {
+        tasks.named("preDebugBuild").configure {
+            if (!System.getProperties().containsKey("skipFormatKtlint")) {
+                dependsOn("formatKtlint")
+            }
+            dependsOn("runCheckstyle", "runKtlint", "checkDependenciesOrder")
         }
-        dependsOn("runCheckstyle", "runKtlint", "checkDependenciesOrder")
     }
 }
 

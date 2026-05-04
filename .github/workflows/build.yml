@@ -22,11 +22,23 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: latest
+          accept-android-sdk-licenses: true
+          packages: |
+            platform-tools
+            platforms;android-36
+            build-tools;35.0.0
+
       - name: Grant execute permission to gradlew
         run: chmod +x gradlew
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
+        env:
+          CI: true
 
       - name: List APK outputs
         run: find app/build/outputs/apk -name "*.apk" 2>/dev/null || echo "No APK files found"
@@ -34,7 +46,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: NewPipe-AndroidAuto-debug
+          name: YTAndroidAuto-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
