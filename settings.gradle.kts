@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2025 NewPipe e.V. <https://newpipe-ev.de>
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 pluginManagement {
     repositories {
         gradlePluginPortal()
@@ -5,24 +10,24 @@ pluginManagement {
         mavenCentral()
     }
 }
-
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("com\\.google.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
+        google()
         mavenCentral()
-        maven("https://jitpack.io")
-        mavenLocal()
+        maven(url = "https://jitpack.io")
+        maven(url = "https://repo.clojars.org")
     }
 }
+include (":app")
 
-rootProject.name = "LibreTube"
+// Use a local copy of NewPipe Extractor by uncommenting the lines below.
+// We assume, that NewPipe and NewPipe Extractor have the same parent directory.
+// If this is not the case, please change the path in includeBuild().
 
-include(":app")
-include(":baselineprofile")
+//includeBuild("../NewPipeExtractor") {
+//    dependencySubstitution {
+//        substitute(module("com.github.TeamNewPipe:NewPipeExtractor"))
+//            .using(project(":extractor"))
+//    }
+//}

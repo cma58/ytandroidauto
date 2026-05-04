@@ -1,103 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context="org.schabi.newpipe.about.AboutActivity">
 
-    <LinearLayout
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:paddingTop="@dimen/appbar_padding_top"
+        android:theme="@style/ThemeOverlay.AppCompat.DayNight.ActionBar"
+        app:popupTheme="@style/ThemeOverlay.AppCompat.DayNight.ActionBar">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/about_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            android:theme="@style/ToolbarTheme"
+            app:layout_scrollFlags="scroll|enterAlways" />
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/about_tabLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:navigationIcon="?homeAsUpIndicator"
-            android:fitsSystemWindows="true"
-            app:title="@string/about" />
+            app:tabTextColor="@color/white"
+            app:tabIndicatorColor="@color/white" />
 
-        <com.github.libretube.ui.views.AppIconHeader
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+    </com.google.android.material.appbar.AppBarLayout>
 
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/donate"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/donate"
-                app:drawableStartCompat="@drawable/ic_donate" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/website"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/website"
-                app:drawableStartCompat="@drawable/ic_region" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/github"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/github"
-                app:drawableStartCompat="@drawable/ic_github" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/piped"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/piped"
-                app:drawableStartCompat="@drawable/ic_piped" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/translate"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/translate"
-                app:drawableStartCompat="@drawable/ic_weblate" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/license"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/license"
-                app:drawableStartCompat="@drawable/ic_license" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/device"
-            style="@style/AboutCard">
-
-            <androidx.appcompat.widget.AppCompatTextView
-                style="@style/AboutItem"
-                android:text="@string/device_info"
-                app:drawableStartCompat="@drawable/ic_device" />
-
-        </com.google.android.material.card.MaterialCardView>
-
-    </LinearLayout>
-
-</ScrollView>
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/about_viewPager2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -1,25 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <attr name="progress_horizontal_drawable" format="reference" />
+    <!-- Can't refer to colors directly in drawable's xml-->
+    <attr name="toolbar_shadow" format="reference" />
+    <attr name="selector" format="reference" />
+    <attr name="checked_selector" format="reference" />
+    <attr name="focused_selector" format="reference" />
+    <attr name="dashed_border" format="reference" />
 
-    <declare-styleable name="SliderPreference">
-        <attr name="valueFrom" format="float" />
-        <attr name="valueTo" format="float" />
-        <attr name="stepSize" format="float" />
-        <attr name="defValue" format="float" />
-    </declare-styleable>
+    <attr name="actionColor" format="color" />
+    <attr name="separator_color" format="color" />
+    <attr name="contrast_background_color" format="color" />
+    <attr name="windowBackground" format="color" />
+    <attr name="colorPrimary" format="color" />
+    <attr name="toolbarSearchColor" format="reference|color" />
 
-    <declare-styleable name="DrawableTextView">
-        <attr name="drawableStartDimen" format="dimension" />
-        <attr name="drawableTopDimen" format="dimension" />
-        <attr name="drawableEndDimen" format="dimension" />
-        <attr name="drawableBottomDimen" format="dimension" />
-        <attr name="android:drawablePadding" />
-        <attr name="android:gravity" />
-    </declare-styleable>
-
-    <declare-styleable name="DropdownMenu">
-        <attr name="hint" format="string" />
-        <attr name="icon" format="reference" />
-    </declare-styleable>
-
+    <attr name="card_item_background_color" format="color" />
+    <attr name="card_item_contrast_color" format="color" />
+    <attr name="border_color" format="color" />
 </resources>
